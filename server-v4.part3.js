@@ -4,21 +4,24 @@
  return meta}
 async function mapLimit(a,n,fn){const out=new Array(a.length);let i=0;async function w(){for(;;){const j=i++;if(j>=a.length)return;try{out[j]=await fn(a[j],j)}catch(e){log('mapLimit',e.message);out[j]=null}}}await Promise.all(Array.from({length:Math.min(n,Math.max(1,a.length))},w));return out.filter(Boolean)}
 function dedupMetas(a){const m=new Map();for(const x of a){const k=x.id||`${x.type}:${nm(x.name)}:${x.releaseInfo||''}`;if(!m.has(k))m.set(k,x)}return [...m.values()]}
+async function searchConcertItems(q,c={},maxPages=6){const out=[],seen=new Set();for(let p=0;p<maxPages;p++){let a=[];try{a=await fetchPage(p,c,CAT.CONCERTS,q)}catch(e){if(!out.length)throw e;break}for(const x of a)if(!seen.has(x.id)){seen.add(x.id);out.push(x)}if(a.length<10)break}return out.filter(isConcert)}
 const SEARCH_CATS=[
  {type:'movie',id:'skt-search-filmy',name:'🔎 SKT: Hľadať filmy',search:true},
- {type:'series',id:'skt-search-serialy',name:'🔎 SKT: Hľadať seriály',search:true}
+ {type:'series',id:'skt-search-serialy',name:'🔎 SKT: Hľadať seriály',search:true},
+ {type:'movie',id:'skt-search-koncerty',name:'🔎 SKT: Hľadať koncerty',search:true,concert:true}
 ];
 const ALL_CATS=[...CATS,...SEARCH_CATS];
-function manifest(){return{id:'community.sktorrent.catalogs',version:'1.4.0',name:'SKTorrent Katalógy',description:'SKTorrent katalógy bez povinného prihlásenia, s IMDb/TMDB metadátami, bezpečným párovaním koncertov a vyhľadávaním filmov/seriálov.',resources:[{name:'catalog',types:['movie','series']},{name:'meta',types:['movie','series'],idPrefixes:['tt','tmdb:','skt:','sktc:','sktseries:']},{name:'stream',types:['movie','series'],idPrefixes:['tt','tmdb:','skt:','sktc:','sktseries:','sktv:','sktf:']}],types:['movie','series'],catalogs:ALL_CATS.map(c=>({...c,search:undefined,extra:c.search?[{name:'search',isRequired:true},{name:'skip',isRequired:false}]:[{name:'skip',isRequired:false}]})),idPrefixes:['tt','tmdb:','skt:','sktc:','sktseries:','sktv:','sktf:'],behaviorHints:{configurable:true,configurationRequired:false}}}
+function manifest(){return{id:'community.sktorrent.catalogs',version:'1.5.0',name:'SKTorrent Katalógy',description:'SKTorrent katalógy bez povinného prihlásenia, s IMDb/TMDB metadátami, bezpečným párovaním koncertov a vyhľadávaním filmov, seriálov aj koncertov.',resources:[{name:'catalog',types:['movie','series']},{name:'meta',types:['movie','series'],idPrefixes:['tt','tmdb:','skt:','sktc:','sktseries:']},{name:'stream',types:['movie','series'],idPrefixes:['tt','tmdb:','skt:','sktc:','sktseries:','sktv:','sktf:']}],types:['movie','series'],catalogs:ALL_CATS.map(c=>({...c,search:undefined,concert:undefined,extra:c.search?[{name:'search',isRequired:true},{name:'skip',isRequired:false}]:[{name:'skip',isRequired:false}]})),idPrefixes:['tt','tmdb:','skt:','sktc:','sktseries:','sktv:','sktf:'],behaviorHints:{configurable:true,configurationRequired:false}}}
 function extraOf(s){let raw=String(s||'');try{raw=decodeURIComponent(raw)}catch{}const p=new URLSearchParams(raw);return{skip:Math.max(0,Number(p.get('skip')||0)||0),search:clean(p.get('search')||'')}}
 function searchRank(x,q){const a=nm(lookupTitle(x.name)),b=nm(q);if(!b)return 0;let s=0;if(a===b)s+=1000;else if(a.startsWith(b))s+=800;else if(a.includes(b))s+=650;for(const w of b.split(' ').filter(Boolean))if(a.includes(w))s+=60;if(x.year)s+=5;if(x.seeds)s+=Math.min(25,Math.log2(x.seeds+1)*4);return s}
 async function catalog(req,res,c){const spec=ALL_CATS.find(x=>x.type===req.params.type&&x.id===req.params.id);if(!spec)return res.status(404).json({metas:[]});const ex=extraOf(req.params.extra),sk=ex.skip;
  if(spec.search){
    if(!ex.search)return res.json({metas:[]});
-   let raw=await searchItems(ex.search,c,Math.min(8,pages(c)));
-   raw=raw.filter(spec.type==='series'?isSeries:isMovie).sort((a,b)=>searchRank(b,ex.search)-searchRank(a,ex.search));
-   const batch=raw.slice(sk,sk+60);let metas=await mapLimit(batch,7,x=>resolveMeta(req,x,spec.type,c,false));metas=dedupMetas(metas);if(spec.type==='series')metas=metas.filter(m=>/^tt\d+$/.test(m.id)||m.id.startsWith('tmdb:'));metas=metas.slice(0,PAGE_SIZE);
-   log(`search ${spec.type} q=${ex.search} raw=${raw.length} metas=${metas.length}`);return res.json({metas});
+   let raw=spec.concert?await searchConcertItems(ex.search,c,Math.min(10,pages(c))):await searchItems(ex.search,c,Math.min(8,pages(c)));
+   if(spec.concert)raw=raw.filter(isConcert);else raw=raw.filter(spec.type==='series'?isSeries:isMovie);
+   raw=raw.sort((a,b)=>searchRank(b,ex.search)-searchRank(a,ex.search));
+   const batch=raw.slice(sk,sk+60);let metas=await mapLimit(batch,7,x=>resolveMeta(req,x,spec.type,c,Boolean(spec.concert)));metas=dedupMetas(metas);if(spec.type==='series')metas=metas.filter(m=>/^tt\d+$/.test(m.id)||m.id.startsWith('tmdb:'));metas=metas.slice(0,PAGE_SIZE);
+   log(`search ${spec.concert?'concert':spec.type} q=${ex.search} raw=${raw.length} metas=${metas.length}`);return res.json({metas});
  }
  const raw=filter(spec.id,await sourceForCatalog(spec.id,c)),concert=spec.id.includes('koncert'),batch=raw.slice(sk,sk+Math.max(PAGE_SIZE*2,60));let metas=await mapLimit(batch,7,x=>resolveMeta(req,x,spec.type,c,concert));metas=dedupMetas(metas).slice(0,PAGE_SIZE);log(`catalog ${spec.id} raw=${raw.length} batch=${batch.length} metas=${metas.length} standard=${metas.filter(m=>/^tt\d+$/.test(m.id)||m.id.startsWith('tmdb:')).length} concertsLocal=${metas.filter(m=>m.id.startsWith('sktc:')).length}`);res.json({metas})}
 async function cinemetaMeta(type,id){try{const r=await axios.get(`https://v3-cinemeta.strem.io/meta/${type}/${id}.json`,{timeout:6000});return r.data?.meta||null}catch{return null}}
