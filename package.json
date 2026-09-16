@@ -1,7 +1,7 @@
 {
   "name": "sktorrent-catalog-addon",
-  "version": "1.5.0",
-  "description": "Stremio/Nuvio catalog + stream addon for SKTorrent with CZ/SK movies, series, concert catalogs and search",
+  "version": "1.6.0",
+  "description": "Stremio/Nuvio SKTorrent addon with hybrid concert IDs, search and SKTorrent playback",
   "main": "server-v4.part1.js",
   "scripts": {
     "start": "cat server-v4.part1.js server-v4.part2.js server-v4.part3.js server-v4.part4.js > server-v4.generated.js && node server-v4.generated.js",
