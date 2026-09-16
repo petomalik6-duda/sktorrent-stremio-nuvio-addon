@@ -1,6 +1,7 @@
 
 // v1.8: demand-driven catalog pagination across the SKTorrent history
 const FULL_CATALOG_MAX_PAGES=Math.max(50,Number(process.env.FULL_CATALOG_MAX_PAGES||1000)||1000);
+const FULL_CATALOG_FETCH_BATCH=Math.max(1,Math.min(6,Number(process.env.FULL_CATALOG_FETCH_BATCH||4)||4));
 function catalogSourceCategories(id){
  switch(id){
   case'skt-novinky-dabing-filmy':return[CAT.DABING];
@@ -14,12 +15,20 @@ function itemTime(x){return x?.addedDate?.getTime?.()||0}
 async function fullCatalogWindow(id,c={},skip=0,count=80){
  const cats=catalogSourceCategories(id),states=cats.map(category=>({category,page:0,done:false,tail:Infinity})),seen=new Map(),need=Math.max(1,skip+count);let fetchedPages=0;
  while(states.some(s=>!s.done)&&fetchedPages<FULL_CATALOG_MAX_PAGES){
-  const active=states.filter(s=>!s.done),batches=await Promise.all(active.map(async s=>{try{return{state:s,rows:await fetchPage(s.page,c,s.category)}}catch(e){log('full catalog page',id,s.category,s.page,e.message);return{state:s,rows:[],error:e}}}));
-  for(const{state:s,rows,error}of batches){
-   fetchedPages++;s.page++;
-   if(error||rows.length<10)s.done=true;
-   if(rows.length){const times=rows.map(itemTime).filter(Boolean);if(times.length)s.tail=Math.min(...times)}
+  const jobs=[];
+  for(const s of states.filter(v=>!v.done)){
+   for(let i=0;i<FULL_CATALOG_FETCH_BATCH&&fetchedPages+jobs.length<FULL_CATALOG_MAX_PAGES;i++){
+    const page=s.page+i;jobs.push({s,page,p:fetchPage(page,c,s.category).then(rows=>({rows})).catch(error=>({rows:[],error}))})
+   }
+  }
+  const results=await Promise.all(jobs.map(async j=>({...j,...await j.p})));
+  for(const r of results.sort((a,b)=>a.page-b.page)){
+   const s=r.s;fetchedPages++;s.page=Math.max(s.page,r.page+1);
+   if(r.error){log('full catalog page',id,s.category,r.page,r.error.message);s.done=true;continue}
+   const rows=r.rows||[];
+   if(rows.length){const times=rows.map(itemTime).filter(Boolean);if(times.length)s.tail=Math.min(s.tail,...times)}
    for(const x of rows){if(seen.has(x.id))continue;if(filter(id,[x]).length)seen.set(x.id,x)}
+   if(rows.length<10)s.done=true
   }
   if(seen.size>=need){
    const ordered=[...seen.values()].sort((a,b)=>itemTime(b)-itemTime(a)),threshold=itemTime(ordered[Math.min(need-1,ordered.length-1)]);
@@ -44,5 +53,5 @@ async function catalog(req,res,c){
 }
 function manifest(){return{id:'community.sktorrent.catalogs',version:'1.8.0',name:'SKTorrent Katalógy',description:'SKTorrent katalógy s plným stránkovaním histórie, automatickým prihlásením, hybridnými IMDb/TMDB koncertmi a vlastným prehrávaním.',resources:[{name:'catalog',types:['movie','series']},{name:'meta',types:['movie','series'],idPrefixes:['tt','tmdb:','skt:','sktc:','sktseries:']},{name:'stream',types:['movie','series'],idPrefixes:['tt','tmdb:','skt:','sktc:','sktseries:','sktv:','sktf:']}],types:['movie','series'],catalogs:ALL_CATS.map(c=>({...c,search:undefined,concert:undefined,extra:c.search?[{name:'search',isRequired:true},{name:'skip',isRequired:false}]:[{name:'skip',isRequired:false}]})),idPrefixes:['tt','tmdb:','skt:','sktc:','sktseries:','sktv:','sktf:'],behaviorHints:{configurable:true,configurationRequired:false}}}
 removeRoute('/health','get');
-app.get('/health',(_q,r)=>r.json({ok:true,addon:'SKTorrent Katalógy',version:'1.8.0',catalogs:ALL_CATS.length,fullCatalogPagination:true,pageSize:PAGE_SIZE,maxSafetyPages:FULL_CATALOG_MAX_PAGES,search:true,concertSearch:true,hybridConcertIds:true,sktPlayback:true,standardIds:true,usernamePasswordLogin:true,encryptedLoginToken:true,configSecretConfigured:Boolean(process.env.CONFIG_SECRET),categories:CAT,at:new Date().toISOString()}));
+app.get('/health',(_q,r)=>r.json({ok:true,addon:'SKTorrent Katalógy',version:'1.8.0',catalogs:ALL_CATS.length,fullCatalogPagination:true,pageSize:PAGE_SIZE,maxSafetyPages:FULL_CATALOG_MAX_PAGES,fetchBatch:FULL_CATALOG_FETCH_BATCH,search:true,concertSearch:true,hybridConcertIds:true,sktPlayback:true,standardIds:true,usernamePasswordLogin:true,encryptedLoginToken:true,configSecretConfigured:Boolean(process.env.CONFIG_SECRET),categories:CAT,at:new Date().toISOString()}));
 app.get('/debug/full-page/:id/:skip',async(q,r)=>{try{const skip=Math.max(0,Number(q.params.skip)||0),win=await fullCatalogWindow(q.params.id,{},skip,PAGE_SIZE);r.json({ok:true,id:q.params.id,skip,count:win.items.length,matched:win.matched,fetchedPages:win.fetchedPages,exhausted:win.exhausted,sourcePages:win.sourcePages,sample:win.items.slice(0,3).map(x=>({id:x.id,name:x.name,added:x.added}))})}catch(e){r.status(502).json({ok:false,error:e.message})}});
