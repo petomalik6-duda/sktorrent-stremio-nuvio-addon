@@ -30,6 +30,16 @@ jobs:
           done
           cat /tmp/sktorrent-addon.log
           exit 1
+      - name: Full catalog pagination probe
+        run: |
+          curl -fsS --max-time 90 'http://127.0.0.1:7000/debug/full-page/skt-posledne-filmy/400' | tee /tmp/full-page.json
+          node - <<'NODE'
+          const fs=require('fs');
+          const j=JSON.parse(fs.readFileSync('/tmp/full-page.json','utf8'));
+          if(!j.ok) throw new Error(j.error||'pagination probe failed');
+          if(!Number.isInteger(j.count)||j.count<=0) throw new Error(`expected items at skip=400, got ${j.count}`);
+          console.log(`deep-pagination-ok count=${j.count} matched=${j.matched} fetchedPages=${j.fetchedPages}`);
+          NODE
       - name: Concert playback probe
         continue-on-error: true
         run: |
