@@ -1,0 +1,39 @@
+name: Validate SKTorrent addon
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Syntax check
+        run: npm run check
+      - name: Start addon
+        run: |
+          npm start > /tmp/sktorrent-addon.log 2>&1 &
+          echo $! > /tmp/sktorrent-addon.pid
+          for i in {1..20}; do
+            if curl -fsS http://127.0.0.1:7000/health > /tmp/health.json; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/sktorrent-addon.log
+          exit 1
+      - name: Concert playback probe
+        continue-on-error: true
+        run: |
+          curl -fsS --max-time 45 'http://127.0.0.1:7000/debug/playback/concert/The%20Cure' | tee /tmp/playback.json
+          echo
+          cat /tmp/sktorrent-addon.log
