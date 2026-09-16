@@ -4,8 +4,8 @@
   "description": "Stremio/Nuvio catalog + stream addon for SKTorrent with CZ/SK movies, series and concert catalogs",
   "main": "server-v4.part1.js",
   "scripts": {
-    "start": "cat server-v4.part1.js server-v4.part2.js server-v4.part3.js server-v4.part4.js > /tmp/server-v4.js && node /tmp/server-v4.js",
-    "check": "cat server-v4.part1.js server-v4.part2.js server-v4.part3.js server-v4.part4.js > /tmp/server-v4.js && node --check /tmp/server-v4.js"
+    "start": "cat server-v4.part1.js server-v4.part2.js server-v4.part3.js server-v4.part4.js > server-v4.generated.js && node server-v4.generated.js",
+    "check": "cat server-v4.part1.js server-v4.part2.js server-v4.part3.js server-v4.part4.js > server-v4.generated.js && node --check server-v4.generated.js"
   },
   "engines": {
     "node": ">=20"
