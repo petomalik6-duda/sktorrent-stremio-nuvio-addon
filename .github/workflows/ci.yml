@@ -36,3 +36,17 @@ jobs:
           curl -fsS --max-time 45 'http://127.0.0.1:7000/debug/playback/concert/The%20Cure' | tee /tmp/playback.json
           echo
           cat /tmp/sktorrent-addon.log
+      - name: Guest magnet and infoHash probe
+        continue-on-error: true
+        run: |
+          curl -fsSL --max-time 30 -A 'Mozilla/5.0' 'https://sktorrent.eu/torrent/torrents_v2.php?search=The%20Cure&category=26' -o /tmp/search.html
+          ID=$(grep -oE 'details\.php\?id=[^"& ]+' /tmp/search.html | head -1 | sed 's/details.php?id=//')
+          echo "torrent-id=$ID"
+          test -n "$ID" || exit 0
+          curl -fsSL --max-time 30 -A 'Mozilla/5.0' -e 'https://sktorrent.eu/' "https://sktorrent.eu/torrent/details.php?id=$ID" -o /tmp/detail.html
+          echo '--- magnet candidates ---'
+          grep -Eio 'magnet:\?[^"< ]+' /tmp/detail.html | head -5 || true
+          echo '--- btih/hash candidates ---'
+          grep -Eio '(btih:)?[A-Fa-f0-9]{40}' /tmp/detail.html | head -10 || true
+          echo '--- download links ---'
+          grep -Eio 'href="[^"]*(download\.php|magnet)[^"]*"' /tmp/detail.html | head -10 || true
