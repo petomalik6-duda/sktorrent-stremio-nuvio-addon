@@ -25,8 +25,15 @@ async function tmdbSearch(x,type,c,concert=false){const key=c.tmdbKey||process.e
 function baseUrl(req){return String(process.env.PUBLIC_URL||`${req.protocol}://${req.get('host')}`).replace(/\/$/,'')}
 const fallbackPoster=(req,t)=>`${baseUrl(req)}/poster.svg?title=${encodeURIComponent(t||'SKTorrent')}`;
 function localMeta(req,x,type,concert=false){const id=type==='series'?`sktseries:${x.id}`:`${concert?'sktc':'skt'}:${x.id}`;return{id,type,name:displayTitle(x.name),poster:x.poster||fallbackPoster(req,x.name),posterShape:'poster',description:[concert?'Koncert':x.category,x.added&&`Pridané ${x.added}`,x.size,`${x.seeds} seed`].filter(Boolean).join(' • '),releaseInfo:x.year?String(x.year):x.added||undefined,genres:concert?['Concert','Music']:undefined,...(type==='movie'?{behaviorHints:{defaultVideoId:id}}:{})}}
+const CONCERT_LINK_TTL=12*60*60*1000;
+function rememberConcertLink(id,x){if(!id||!x)return;cache.set(`concert-link:${id}`,{v:x,e:Date.now()+CONCERT_LINK_TTL})}
+function getConcertLink(id){const h=cache.get(`concert-link:${id}`);return h&&h.e>Date.now()?h.v:null}
 async function resolveMeta(req,x,type,c,concert=false){let meta=localMeta(req,x,type,concert);
  if(concert){
-   const cine=await findConcertCinemeta(x);if(cine)meta={...meta,poster:cine.poster||meta.poster,background:cine.background||meta.background,description:cine.description||meta.description,imdbRating:cine.imdbRating||meta.imdbRating};
-   const t=await tmdbSearch(x,'movie',c,true);if(t)meta={...meta,poster:t.poster_path?`https://image.tmdb.org/t/p/w500${t.poster_path}`:meta.poster,background:t.backdrop_path?`https://image.tmdb.org/t/p/original${t.backdrop_path}`:meta.background,description:t.overview||meta.description,imdbRating:t.vote_average?Number(t.vote_average).toFixed(1):meta.imdbRating};
+   const cine=await findConcertCinemeta(x);
+   const t=await tmdbSearch(x,'movie',c,true);
+   if(cine)meta={...meta,name:cine.name||meta.name,poster:cine.poster||meta.poster,background:cine.background||meta.background,description:cine.description||meta.description,releaseInfo:cine.releaseInfo||meta.releaseInfo,imdbRating:cine.imdbRating||meta.imdbRating};
+   if(t){const date=t.release_date||t.first_air_date;meta={...meta,name:t.title||t.name||meta.name,poster:t.poster_path?`https://image.tmdb.org/t/p/w500${t.poster_path}`:meta.poster,background:t.backdrop_path?`https://image.tmdb.org/t/p/original${t.backdrop_path}`:meta.background,description:t.overview||meta.description,releaseInfo:date?.slice(0,4)||meta.releaseInfo,imdbRating:t.vote_average?Number(t.vote_average).toFixed(1):meta.imdbRating}}
+   const standardId=/^tt\d+$/.test(cine?.id||'')?cine.id:(/^tt\d+$/.test(t?.imdb||'')?t.imdb:(t?.id?`tmdb:${t.id}`:null));
+   if(standardId){meta.id=standardId;meta.behaviorHints={...(meta.behaviorHints||{}),defaultVideoId:standardId};rememberConcertLink(standardId,x)}
    return meta;
