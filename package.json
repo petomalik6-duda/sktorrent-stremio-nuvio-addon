@@ -1,15 +1,13 @@
 {
   "name": "sktorrent-catalog-addon",
-  "version": "1.8.1",
-  "description": "Stremio/Nuvio SKTorrent addon with resilient automatic metadata matching, full-history catalog pagination, encrypted username/password login, hybrid concert IDs, search and playback",
+  "version": "1.8.2",
+  "description": "Stremio/Nuvio SKTorrent addon with automatic series episode grouping, resilient metadata matching, full-history catalog pagination, encrypted username/password login, hybrid concert IDs, search and playback",
   "main": "server-v4.part1.js",
   "scripts": {
-    "start": "cat server-v4.part1.js server-v4.part2.js server-v4.part3.js server-v4.part4.js server-v4.part5.js server-v4.part6.js server-v4.part7.js server-v4.part8.js > server-v4.generated.js && node --check server-v4.generated.js && echo syntax-ok && node server-v4.generated.js",
-    "check": "cat server-v4.part1.js server-v4.part2.js server-v4.part3.js server-v4.part4.js server-v4.part5.js server-v4.part6.js server-v4.part7.js server-v4.part8.js > server-v4.generated.js && node --check server-v4.generated.js"
+    "start": "cat server-v4.part1.js server-v4.part2.js server-v4.part3.js server-v4.part4.js server-v4.part5.js server-v4.part6.js server-v4.part7.js server-v4.part8.js server-v4.part9.js > server-v4.generated.js && node --check server-v4.generated.js && echo syntax-ok && node server-v4.generated.js",
+    "check": "cat server-v4.part1.js server-v4.part2.js server-v4.part3.js server-v4.part4.js server-v4.part5.js server-v4.part6.js server-v4.part7.js server-v4.part8.js server-v4.part9.js > server-v4.generated.js && node --check server-v4.generated.js"
   },
-  "engines": {
-    "node": ">=20"
-  },
+  "engines": {"node": ">=20"},
   "dependencies": {
     "axios": "^1.12.2",
     "bncode": "^0.5.3",
