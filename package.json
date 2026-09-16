@@ -4,7 +4,7 @@
   "description": "Stremio/Nuvio SKTorrent addon with hybrid concert IDs, search and SKTorrent playback",
   "main": "server-v4.part1.js",
   "scripts": {
-    "start": "cat server-v4.part1.js server-v4.part2.js server-v4.part3.js server-v4.part4.js > server-v4.generated.js && node server-v4.generated.js",
+    "start": "cat server-v4.part1.js server-v4.part2.js server-v4.part3.js server-v4.part4.js > server-v4.generated.js && node --check server-v4.generated.js && echo syntax-ok && node server-v4.generated.js",
     "check": "cat server-v4.part1.js server-v4.part2.js server-v4.part3.js server-v4.part4.js > server-v4.generated.js && node --check server-v4.generated.js"
   },
   "engines": {
