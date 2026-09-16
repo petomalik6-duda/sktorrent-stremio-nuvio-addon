@@ -43,16 +43,19 @@ jobs:
           const axios=require('axios');
           const cheerio=require('cheerio');
           (async()=>{
-            const headers={'User-Agent':'Mozilla/5.0','Accept-Language':'sk,cs;q=0.9,en;q=0.7',Referer:'https://sktorrent.eu/'};
-            const r=await axios.get('https://sktorrent.eu/torrent/torrents_v2.php',{timeout:20000,headers,params:{active:0,category:26,order:'data',by:'DESC',page:0,search:'The Cure'}});
+            const baseHeaders={'User-Agent':'Mozilla/5.0','Accept-Language':'sk,cs;q=0.9,en;q=0.7',Referer:'https://sktorrent.eu/'};
+            const r=await axios.get('https://sktorrent.eu/torrent/torrents_v2.php',{timeout:20000,headers:baseHeaders,params:{active:0,category:26,order:'data',by:'DESC',page:0,search:'The Cure'}});
             const $=cheerio.load(r.data);
             let href=null;
             $('a[href^="details.php"]').each((_,el)=>{if(!href) href=$(el).attr('href')});
             console.log('detail-href=',href||'NONE');
             if(!href)return;
+            const cookies=(r.headers['set-cookie']||[]).map(x=>x.split(';')[0]).join('; ');
+            console.log('guest-session=',cookies?'present':'none');
             const u=new URL(href,'https://sktorrent.eu/torrent/').href;
-            const d=await axios.get(u,{timeout:20000,headers});
-            const html=String(d.data);
+            const d=await axios.get(u,{timeout:20000,headers:{...baseHeaders,Referer:r.config.url,...(cookies?{Cookie:cookies}:{})},validateStatus:()=>true});
+            console.log('detail-status=',d.status);
+            const html=String(d.data||'');
             const magnets=[...html.matchAll(/magnet:\?[^"'<\s]+/ig)].map(m=>m[0]);
             const hashes=[...html.matchAll(/(?:btih:)?[a-f0-9]{40}/ig)].map(m=>m[0]);
             const $$=cheerio.load(html);
