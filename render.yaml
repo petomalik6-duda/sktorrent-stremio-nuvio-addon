@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: sktorrent-catalog-addon
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.5
+      - key: CACHE_TTL_SECONDS
+        value: 600
