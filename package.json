@@ -1,11 +1,11 @@
 {
   "name": "sktorrent-catalog-addon",
-  "version": "1.8.9",
-  "description": "Stremio/Nuvio SKTorrent addon with standard IMDb/TMDB meta IDs and no forced defaultVideoId for multi-addon stream aggregation, exact SKTorrent source links, strict metadata matching, grouped series fallback, stream language flags, subtitle info, full-history pagination and playback",
+  "version": "1.9.0",
+  "description": "Stremio/Nuvio SKTorrent addon in reference movie meta mode with clean IMDb/TMDB IDs, no movie videos/defaultVideoId, exact SKTorrent source links, grouped series fallback, stream language flags, subtitle info, full-history pagination and playback",
   "main": "server-v4.part1.js",
   "scripts": {
-    "start": "cat server-v4.part1.js server-v4.part2.js server-v4.part3.js server-v4.part4.js server-v4.part5.js server-v4.part6.js server-v4.part7.js server-v4.part8.js server-v4.part9.js server-v4.part10.js server-v4.part11.js server-v4.part12.js server-v4.part13.js server-v4.part14.js server-v4.part15.js server-v4.part16.js > server-v4.generated.js && node --check server-v4.generated.js && echo syntax-ok && node server-v4.generated.js",
-    "check": "cat server-v4.part1.js server-v4.part2.js server-v4.part3.js server-v4.part4.js server-v4.part5.js server-v4.part6.js server-v4.part7.js server-v4.part8.js server-v4.part9.js server-v4.part10.js server-v4.part11.js server-v4.part12.js server-v4.part13.js server-v4.part14.js server-v4.part15.js server-v4.part16.js > server-v4.generated.js && node --check server-v4.generated.js"
+    "start": "cat server-v4.part1.js server-v4.part2.js server-v4.part3.js server-v4.part4.js server-v4.part5.js server-v4.part6.js server-v4.part7.js server-v4.part8.js server-v4.part9.js server-v4.part10.js server-v4.part11.js server-v4.part12.js server-v4.part13.js server-v4.part14.js server-v4.part15.js server-v4.part16.js server-v4.part17.js > server-v4.generated.js && node --check server-v4.generated.js && echo syntax-ok && node server-v4.generated.js",
+    "check": "cat server-v4.part1.js server-v4.part2.js server-v4.part3.js server-v4.part4.js server-v4.part5.js server-v4.part6.js server-v4.part7.js server-v4.part8.js server-v4.part9.js server-v4.part10.js server-v4.part11.js server-v4.part12.js server-v4.part13.js server-v4.part14.js server-v4.part15.js server-v4.part16.js server-v4.part17.js > server-v4.generated.js && node --check server-v4.generated.js"
   },
   "engines": {"node": ">=20"},
   "dependencies": {
