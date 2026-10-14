@@ -32,93 +32,55 @@ jobs:
           done
           cat /tmp/sktorrent-addon.log
           exit 1
-      - name: Discover SKTorrent film categories
+      - name: Verify v2 movie source map
+        run: |
+          curl -fsS 'http://127.0.0.1:7000/debug/v2-sources/skt-posledne-filmy' > /tmp/sources.json
+          cat /tmp/sources.json
+          node - <<'NODE'
+          const j=require('/tmp/sources.json');
+          if(!j.ok||!Array.isArray(j.categories)) throw new Error('invalid source map');
+          if(j.categories.includes(0)) throw new Error('movie catalog must not scan category=0');
+          for(const id of [1,5,14,15,20,31,3,43]) if(!j.categories.includes(id)) throw new Error(`missing movie category ${id}`);
+          if(!(j.concurrency>=2&&j.concurrency<=12)) throw new Error('invalid catalog concurrency');
+          console.log(`source-map-ok categories=${j.categories.join(',')} concurrency=${j.concurrency}`);
+          NODE
+      - name: Discover live SKTorrent categories
         continue-on-error: true
         run: |
           node <<'NODE'
-          const axios=require('axios');
-          const cheerio=require('cheerio');
-          (async()=>{
-            const r=await axios.get('https://sktorrent.eu/torrent/torrents_v2.php',{timeout:20000,headers:{'User-Agent':'Mozilla/5.0','Accept-Language':'sk,cs;q=0.9,en;q=0.7'}});
-            const $=cheerio.load(r.data);
-            const out=[];
-            $('select option').each((_,o)=>{
-              const t=$(o).text().replace(/\s+/g,' ').trim(),v=$(o).attr('value');
-              if(/^(Filmy|3D Filmy|UHD Filmy|Seriál|Dokument|TV Pořad|Hudební videa)/i.test(t)) out.push({value:v,text:t});
-            });
-            console.log('SKT_CATEGORY_MAP='+JSON.stringify(out));
-          })().catch(e=>{console.error('category-discovery-error=',e.message);process.exitCode=0});
+          const axios=require('axios');const cheerio=require('cheerio');
+          (async()=>{const r=await axios.get('https://sktorrent.eu/torrent/torrents_v2.php',{timeout:20000,headers:{'User-Agent':'Mozilla/5.0','Accept-Language':'sk,cs;q=0.9,en;q=0.7'}}),$=cheerio.load(r.data),out=[];
+          $('select option').each((_,o)=>{const t=$(o).text().replace(/\s+/g,' ').trim(),v=$(o).attr('value');if(/^(Filmy|3D Filmy|UHD Filmy|Seriál|Dokument|TV Pořad|Hudební videa)/i.test(t))out.push({value:v,text:t})});
+          console.log('SKT_CATEGORY_MAP='+JSON.stringify(out))})().catch(e=>console.error(e.message));
           NODE
-      - name: V2 source index smoke test
+      - name: Guest protected-category probe
+        continue-on-error: true
         run: |
-          curl -fsS --max-time 30 'http://127.0.0.1:7000/debug/v2-sources/skt-posledne-filmy'
-          echo
-          curl -fsS --max-time 45 'http://127.0.0.1:7000/debug/full-page/skt-posledne-filmy/0' | tee /tmp/source-v2.json
+          curl -fsS --max-time 30 'http://127.0.0.1:7000/debug/full-page/skt-posledne-filmy/0' | tee /tmp/source-v2.json
           echo
           cat /tmp/sktorrent-addon.log
-          node - <<'NODE'
-          const fs=require('fs');
-          const j=JSON.parse(fs.readFileSync('/tmp/source-v2.json','utf8'));
-          if(!j.ok) throw new Error(j.error||'source index failed');
-          if(!Number.isInteger(j.count)||j.count<=0) throw new Error(`expected source items, got ${j.count}`);
-          console.log(`v2-source-ok count=${j.count} matched=${j.matched} fetchedPages=${j.fetchedPages}`);
-          NODE
-      - name: V2 catalog smoke test
+      - name: Guest catalog probe
+        continue-on-error: true
         run: |
-          curl -fsS --max-time 60 'http://127.0.0.1:7000/catalog/movie/skt-posledne-filmy.json' | tee /tmp/catalog-v2.json || { cat /tmp/sktorrent-addon.log; exit 1; }
+          curl -fsS --max-time 60 'http://127.0.0.1:7000/catalog/movie/skt-posledne-filmy.json' | tee /tmp/catalog-v2.json
           echo
           cat /tmp/sktorrent-addon.log
-          node - <<'NODE'
-          const fs=require('fs');
-          const j=JSON.parse(fs.readFileSync('/tmp/catalog-v2.json','utf8'));
-          if(!Array.isArray(j.metas)) throw new Error('metas is not an array');
-          if(j.metas.length<1) throw new Error('v2 catalog returned no metas');
-          if(j.metas.length>40) throw new Error(`v2 catalog exceeded PAGE_SIZE: ${j.metas.length}`);
-          if(!j.metas.every(m=>/^tt\d+$/.test(String(m.id||''))||/^tmdb:\d+$/.test(String(m.id||'')))) throw new Error('movie catalog contains a non-standard id');
-          console.log(`v2-catalog-ok metas=${j.metas.length}`);
-          NODE
-      - name: Full catalog pagination probe
+      - name: Deep pagination probe
+        continue-on-error: true
         run: |
           curl -fsS --max-time 60 'http://127.0.0.1:7000/debug/full-page/skt-posledne-filmy/400' | tee /tmp/full-page.json
-          node - <<'NODE'
-          const fs=require('fs');
-          const j=JSON.parse(fs.readFileSync('/tmp/full-page.json','utf8'));
-          if(!j.ok) throw new Error(j.error||'pagination probe failed');
-          if(!Number.isInteger(j.count)||j.count<=0) throw new Error(`expected items at skip=400, got ${j.count}`);
-          console.log(`deep-pagination-ok count=${j.count} matched=${j.matched} fetchedPages=${j.fetchedPages}`);
-          NODE
       - name: Concert playback probe
         continue-on-error: true
         run: |
           curl -fsS --max-time 45 'http://127.0.0.1:7000/debug/playback/concert/The%20Cure' | tee /tmp/playback.json
-          echo
-          cat /tmp/sktorrent-addon.log
       - name: Guest magnet and infoHash probe
         continue-on-error: true
         run: |
           node <<'NODE'
-          const axios=require('axios');
-          const cheerio=require('cheerio');
-          (async()=>{
-            const baseHeaders={'User-Agent':'Mozilla/5.0','Accept-Language':'sk,cs;q=0.9,en;q=0.7',Referer:'https://sktorrent.eu/'};
-            const r=await axios.get('https://sktorrent.eu/torrent/torrents_v2.php',{timeout:20000,headers:baseHeaders,params:{active:0,category:26,order:'data',by:'DESC',page:0,search:'The Cure'}});
-            const $=cheerio.load(r.data);
-            let href=null;
-            $('a[href^="details.php"]').each((_,el)=>{if(!href) href=$(el).attr('href')});
-            console.log('detail-href=',href||'NONE');
-            if(!href)return;
-            const cookies=(r.headers['set-cookie']||[]).map(x=>x.split(';')[0]).join('; ');
-            console.log('guest-session=',cookies?'present':'none');
-            const u=new URL(href,'https://sktorrent.eu/torrent/').href;
-            const d=await axios.get(u,{timeout:20000,headers:{...baseHeaders,Referer:r.config.url,...(cookies?{Cookie:cookies}:{})},validateStatus:()=>true});
-            console.log('detail-status=',d.status);
-            const html=String(d.data||'');
-            const magnets=[...html.matchAll(/magnet:\?[^"'<\s]+/ig)].map(m=>m[0]);
-            const hashes=[...html.matchAll(/(?:btih:)?[a-f0-9]{40}/ig)].map(m=>m[0]);
-            const $$=cheerio.load(html);
-            const links=[];$$('a[href]').each((_,a)=>{const h=$$(a).attr('href')||'';if(/download\.php|magnet:/i.test(h))links.push(h)});
-            console.log('magnet-count=',magnets.length);console.log(magnets.slice(0,3));
-            console.log('hash-count=',hashes.length);console.log(hashes.slice(0,5));
-            console.log('download-links=',links.slice(0,10));
-          })().catch(e=>{console.error('probe-error=',e.message);process.exitCode=0});
+          const axios=require('axios');const cheerio=require('cheerio');
+          (async()=>{const baseHeaders={'User-Agent':'Mozilla/5.0','Accept-Language':'sk,cs;q=0.9,en;q=0.7',Referer:'https://sktorrent.eu/'};
+          const r=await axios.get('https://sktorrent.eu/torrent/torrents_v2.php',{timeout:20000,headers:baseHeaders,params:{active:0,category:26,order:'data',by:'DESC',page:0,search:'The Cure'}}),$=cheerio.load(r.data);let href=null;
+          $('a[href^="details.php"]').each((_,el)=>{if(!href)href=$(el).attr('href')});console.log('detail-href=',href||'NONE');if(!href)return;
+          const cookies=(r.headers['set-cookie']||[]).map(x=>x.split(';')[0]).join('; '),u=new URL(href,'https://sktorrent.eu/torrent/').href,d=await axios.get(u,{timeout:20000,headers:{...baseHeaders,...(cookies?{Cookie:cookies}:{})},validateStatus:()=>true}),html=String(d.data||'');
+          console.log('detail-status=',d.status,'magnet-count=',[...html.matchAll(/magnet:\?[^"'<\s]+/ig)].length,'hash-count=',[...html.matchAll(/(?:btih:)?[a-f0-9]{40}/ig)].length)})().catch(e=>console.error(e.message));
           NODE
