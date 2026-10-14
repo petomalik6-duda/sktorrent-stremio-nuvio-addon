@@ -32,6 +32,23 @@ jobs:
           done
           cat /tmp/sktorrent-addon.log
           exit 1
+      - name: Discover SKTorrent film categories
+        continue-on-error: true
+        run: |
+          node <<'NODE'
+          const axios=require('axios');
+          const cheerio=require('cheerio');
+          (async()=>{
+            const r=await axios.get('https://sktorrent.eu/torrent/torrents_v2.php',{timeout:20000,headers:{'User-Agent':'Mozilla/5.0','Accept-Language':'sk,cs;q=0.9,en;q=0.7'}});
+            const $=cheerio.load(r.data);
+            const out=[];
+            $('select option').each((_,o)=>{
+              const t=$(o).text().replace(/\s+/g,' ').trim(),v=$(o).attr('value');
+              if(/^(Filmy|3D Filmy|UHD Filmy|Seriál|Dokument|TV Pořad|Hudební videa)/i.test(t)) out.push({value:v,text:t});
+            });
+            console.log('SKT_CATEGORY_MAP='+JSON.stringify(out));
+          })().catch(e=>{console.error('category-discovery-error=',e.message);process.exitCode=0});
+          NODE
       - name: V2 catalog smoke test
         run: |
           curl -fsS --max-time 90 'http://127.0.0.1:7000/catalog/movie/skt-posledne-filmy.json' | tee /tmp/catalog-v2.json
