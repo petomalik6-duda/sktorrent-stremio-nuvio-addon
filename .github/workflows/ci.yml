@@ -49,9 +49,25 @@ jobs:
             console.log('SKT_CATEGORY_MAP='+JSON.stringify(out));
           })().catch(e=>{console.error('category-discovery-error=',e.message);process.exitCode=0});
           NODE
+      - name: V2 source index smoke test
+        run: |
+          curl -fsS --max-time 30 'http://127.0.0.1:7000/debug/v2-sources/skt-posledne-filmy'
+          echo
+          curl -fsS --max-time 45 'http://127.0.0.1:7000/debug/full-page/skt-posledne-filmy/0' | tee /tmp/source-v2.json
+          echo
+          cat /tmp/sktorrent-addon.log
+          node - <<'NODE'
+          const fs=require('fs');
+          const j=JSON.parse(fs.readFileSync('/tmp/source-v2.json','utf8'));
+          if(!j.ok) throw new Error(j.error||'source index failed');
+          if(!Number.isInteger(j.count)||j.count<=0) throw new Error(`expected source items, got ${j.count}`);
+          console.log(`v2-source-ok count=${j.count} matched=${j.matched} fetchedPages=${j.fetchedPages}`);
+          NODE
       - name: V2 catalog smoke test
         run: |
-          curl -fsS --max-time 90 'http://127.0.0.1:7000/catalog/movie/skt-posledne-filmy.json' | tee /tmp/catalog-v2.json
+          curl -fsS --max-time 60 'http://127.0.0.1:7000/catalog/movie/skt-posledne-filmy.json' | tee /tmp/catalog-v2.json || { cat /tmp/sktorrent-addon.log; exit 1; }
+          echo
+          cat /tmp/sktorrent-addon.log
           node - <<'NODE'
           const fs=require('fs');
           const j=JSON.parse(fs.readFileSync('/tmp/catalog-v2.json','utf8'));
@@ -63,7 +79,7 @@ jobs:
           NODE
       - name: Full catalog pagination probe
         run: |
-          curl -fsS --max-time 90 'http://127.0.0.1:7000/debug/full-page/skt-posledne-filmy/400' | tee /tmp/full-page.json
+          curl -fsS --max-time 60 'http://127.0.0.1:7000/debug/full-page/skt-posledne-filmy/400' | tee /tmp/full-page.json
           node - <<'NODE'
           const fs=require('fs');
           const j=JSON.parse(fs.readFileSync('/tmp/full-page.json','utf8'));
