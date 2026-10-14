@@ -32,6 +32,18 @@ jobs:
           done
           cat /tmp/sktorrent-addon.log
           exit 1
+      - name: V2 catalog smoke test
+        run: |
+          curl -fsS --max-time 90 'http://127.0.0.1:7000/catalog/movie/skt-posledne-filmy.json' | tee /tmp/catalog-v2.json
+          node - <<'NODE'
+          const fs=require('fs');
+          const j=JSON.parse(fs.readFileSync('/tmp/catalog-v2.json','utf8'));
+          if(!Array.isArray(j.metas)) throw new Error('metas is not an array');
+          if(j.metas.length<1) throw new Error('v2 catalog returned no metas');
+          if(j.metas.length>40) throw new Error(`v2 catalog exceeded PAGE_SIZE: ${j.metas.length}`);
+          if(!j.metas.every(m=>/^tt\d+$/.test(String(m.id||''))||/^tmdb:\d+$/.test(String(m.id||'')))) throw new Error('movie catalog contains a non-standard id');
+          console.log(`v2-catalog-ok metas=${j.metas.length}`);
+          NODE
       - name: Full catalog pagination probe
         run: |
           curl -fsS --max-time 90 'http://127.0.0.1:7000/debug/full-page/skt-posledne-filmy/400' | tee /tmp/full-page.json
