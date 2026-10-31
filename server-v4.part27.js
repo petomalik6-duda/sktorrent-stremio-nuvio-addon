@@ -47,3 +47,42 @@ fetchPage=async function(p,c={},category=0,search=''){
   return out
  })
 };
+
+// v2.0.1: People filmography bridge. Nuvio exposes a person profile as a
+// synthetic series, so each filmography entry carries its real target in
+// person-credit:<movie|series>:<tmdbId>. Resolve it through the Discovery addon
+// and feed the canonical IMDb/TMDB id back into the existing SKTorrent stream path.
+const PERF_V2_PEOPLE_DISCOVERY_BASE=String(process.env.PEOPLE_DISCOVERY_BASE_URL||'https://stremio-csfd-discovery-addon.onrender.com').replace(/\/$/,'');
+function perfV2PersonCreditTarget(id){const m=String(id||'').match(/^person-credit:(movie|series):(\d+)$/i);return m?{type:m[1].toLowerCase(),tmdbId:Number(m[2])}:null}
+async function perfV2ResolvePersonCredit(id){
+ const t=perfV2PersonCreditTarget(id);if(!t)return null;
+ const key=`people-credit:${t.type}:${t.tmdbId}`,old=successfulCacheGet(key);if(old)return old;
+ let canonical=`tmdb:${t.tmdbId}`;
+ try{
+  const r=await metadataGet(`${PERF_V2_PEOPLE_DISCOVERY_BASE}/meta/${t.type}/tmdb:${t.type}:${t.tmdbId}.json`,{headers:{Accept:'application/json','User-Agent':'SKTorrent-PeopleBridge/2.0.1'}},`People bridge ${t.type}:${t.tmdbId}`),m=r.data?.meta||null;
+  if(/^tt\d+$/.test(String(m?.id||'')))canonical=String(m.id)
+ }catch(e){log('people bridge metadata',id,e.message)}
+ return successfulCacheSet(key,{...t,standardId:canonical})
+}
+const perfV2PeopleStreamBase=stream;
+stream=async function(req,res,c){
+ const bridge=perfV2PersonCreditTarget(req.params.id);
+ if(!bridge)return perfV2PeopleStreamBase(req,res,c);
+ try{
+  const target=await perfV2ResolvePersonCredit(req.params.id);
+  if(!target)return res.json({streams:[]});
+  const streams=await streamsForStandard(target.type,target.standardId,authConfig(c));
+  log(`people-stream type=${target.type} id=${target.standardId} count=${streams.length}`);
+  return res.json({streams})
+ }catch(e){log('people stream',req.params.id,e.message);return res.json({streams:[]})}
+};
+const perfV2PeopleManifestBase=manifest;
+manifest=function(){
+ const m=perfV2PeopleManifestBase();
+ m.version='2.0.1';
+ m.description=String(m.description||'SKTorrent Katalógy')+' Podpora People filmografie cez person-credit bridge.';
+ m.idPrefixes=[...new Set([...(m.idPrefixes||[]),'person-credit:'])];
+ m.resources=(m.resources||[]).map(r=>r&&typeof r==='object'&&r.name==='stream'?{...r,idPrefixes:[...new Set([...(r.idPrefixes||[]),'person-credit:'])]}:r);
+ return m
+};
+app.get('/debug/people-credit/:type/:tmdbId',async(q,r)=>{try{const id=`person-credit:${q.params.type}:${q.params.tmdbId}`,target=await perfV2ResolvePersonCredit(id);r.json({ok:Boolean(target),id,target})}catch(e){r.status(502).json({ok:false,error:e.message})}});
