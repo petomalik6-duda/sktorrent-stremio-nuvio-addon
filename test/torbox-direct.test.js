@@ -69,8 +69,29 @@ test('stuck checking item with zero files is replaced using the real .torrent fi
  assert.ok(create?.body.get('file'));assert.equal(create.body.get('magnet'),null);
 });
 
-test('unfinished TorBox item keeps original SKTorrent infoHash fallback visible',async()=>{
- const fetchImpl=async()=>({ok:true,status:200,json:async()=>({success:true,data:[{id:555,hash:HASH,download_present:false,download_finished:false,download_state:'downloading',files:[]}]})});
+test('downloading TorBox item becomes Direct when requestdl already permits progressive access',async()=>{
+ const downloading={id:555,hash:HASH,download_present:false,download_finished:false,download_state:'downloading',files:[]};
+ const calls=[];
+ const fetchImpl=async(url)=>{
+  const u=String(url);calls.push(u);
+  if(u.includes('/requestdl'))return {ok:true,status:200,json:async()=>({success:true,data:'https://cdn.example/progressive.mkv'})};
+  if(u.includes('id=555'))return {ok:true,status:200,json:async()=>({success:true,data:downloading})};
+  return {ok:true,status:200,json:async()=>({success:true,data:[downloading]})};
+ };
+ const original={name:'SKTorrent',infoHash:HASH,fileIdx:0,behaviorHints:{filename:'Kabat concert.mkv'}};
+ const out=await prepareStreams([original],{token:TOKEN,publicBase:'https://example.test',fetchImpl});
+ assert.equal(out[0].infoHash,undefined);assert.match(out[0].url,/\/wako-direct\//);assert.match(out[0].name,/Direct/);
+ assert.ok(calls.some(u=>u.includes('/requestdl')));
+});
+
+test('unfinished TorBox item keeps original SKTorrent infoHash fallback visible when requestdl is unavailable',async()=>{
+ const downloading={id:555,hash:HASH,download_present:false,download_finished:false,download_state:'downloading',files:[]};
+ const fetchImpl=async(url)=>{
+  const u=String(url);
+  if(u.includes('/requestdl'))return {ok:false,status:400,json:async()=>({success:false,detail:'Torrent not ready'})};
+  if(u.includes('id=555'))return {ok:true,status:200,json:async()=>({success:true,data:downloading})};
+  return {ok:true,status:200,json:async()=>({success:true,data:[downloading]})};
+ };
  const original={name:'SKTorrent',infoHash:HASH,fileIdx:0};
  const out=await prepareStreams([original],{token:TOKEN,publicBase:'https://example.test',fetchImpl});
  assert.equal(out[0],original);assert.equal(out[0].infoHash,HASH);assert.equal(out[0].url,undefined);
