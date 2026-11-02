@@ -41,5 +41,31 @@ app.get('/wako-direct/:ticket',async(req,res)=>{
 });
 app.get('/debug/wako-direct',(_q,r)=>r.json({ok:true,configured:Boolean(wakoTorboxToken),mode:'server-side-torbox-redirect'}));
 
+// Safe one-title production diagnostic. Never returns the API token, URLs,
+// headers, filenames, or any account-wide torrent data.
+app.get('/debug/wako-torbox-kabat',async(_q,r)=>{
+ if(!wakoTorboxToken)return r.status(503).json({ok:false,configured:false});
+ const hash='2c06eefc81b03b861c97292001da670f1ba4b0b2';
+ try{
+  const rows=await torboxDirect.myList(wakoTorboxToken,{bypassCache:true});
+  const item=rows.find(x=>torboxDirect.normHash(x?.hash)===hash)||null;
+  if(!item)return r.json({ok:true,configured:true,found:false});
+  const state=String(item.download_state??item.downloadState??item.state??item.status??'');
+  const files=Array.isArray(item.files)?item.files:[];
+  return r.json({
+   ok:true,configured:true,found:true,
+   id:Number(item.id)||null,
+   state,
+   ready:torboxDirect.ready(item),
+   downloadPresent:item.download_present===true||item.downloadPresent===true,
+   downloadFinished:item.download_finished===true||item.downloadFinished===true,
+   files:files.length,
+   hasVideo:files.some(f=>/\.(mkv|mp4|m4v|avi|mov|webm|ts|m2ts)$/i.test(String(f?.name||f?.short_name||f?.shortName||'')))
+  });
+ }catch(e){
+  return r.status(502).json({ok:false,configured:true,error:String(e?.message||e).slice(0,120)});
+ }
+});
+
 const wakoModeManifestBase=manifest;
 manifest=function(){return {...wakoModeManifestBase(),version:'2.2.11'}};
