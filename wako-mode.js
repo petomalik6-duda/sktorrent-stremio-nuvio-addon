@@ -1,5 +1,30 @@
 'use strict';
 const aliasPrefix='sktmovie';
+const inferredClients=new Map();
+const INFER_TTL_MS=10*60*1000;
+
+function clientKey(req){
+ const forwarded=String(req?.get?.('x-forwarded-for')||'').split(',')[0].trim();
+ return forwarded||String(req?.ip||req?.socket?.remoteAddress||'');
+}
+
+function inferWakoClient(req){
+ const now=Date.now();
+ const key=clientKey(req);
+ const ua=/wako/i.test(String(req?.get?.('user-agent')||''));
+ if(ua){
+  if(key)inferredClients.set(key,now+INFER_TTL_MS);
+  req.sktWakoCompat=true;
+  return true;
+ }
+ const until=key?Number(inferredClients.get(key)||0):0;
+ if(until>now){
+  req.sktWakoCompat=true;
+  return true;
+ }
+ if(key&&until)inferredClients.delete(key);
+ return false;
+}
 
 function imdbId(meta){
  for(const value of [meta?.imdb_id,meta?.imdbId,meta?.imdb,meta?.id]){
@@ -65,6 +90,7 @@ function rewriteWakoUrl(url){
 }
 
 function middleware(req,res,next){
+ inferWakoClient(req);
  if(!req.url.startsWith('/wako/'))return next();
  req.sktWakoCompat=true;
  const original=req.url.match(/\/(meta|stream)\/(movie|series)\/([^/?]+)\.json(?=\?|$)/);
@@ -88,4 +114,4 @@ function install(app){
  app._router.stack.splice(index<0?app._router.stack.length:index,0,layer);
 }
 
-module.exports={adaptMovie,adaptManifest,middleware,install,imdbId,tmdbId,rewriteWakoUrl};
+module.exports={adaptMovie,adaptManifest,middleware,install,imdbId,tmdbId,rewriteWakoUrl,inferWakoClient,clientKey};
