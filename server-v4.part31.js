@@ -1,7 +1,6 @@
 
-// v2.2.6: Wako concert cards are enriched to IMDb in the catalog itself.
-// Wako can jump straight from a catalog card to stream lookup without fetching
-// meta first, so detail-only TMDB -> IMDb enrichment is not sufficient.
+// v2.2.7: keep Wako private item IDs stable and expose verified IMDb through
+// meta.imdb_id, which Wako documents as its cross-addon stream lookup escape hatch.
 const {resolveTmdbToImdb,resolveTmdbBatchToImdb}=require('./external-id-resolver');
 const WAKO_CATALOG_ID_TTL=6*60*60*1000;
 const wakoCatalogTmdbByImdb=new Map();
@@ -59,7 +58,7 @@ catalog=async function(req,res,c){
    if(!imdb)return meta;
    if(tmdb)wakoRememberCatalogId(imdb,tmdb);
    if(!existing)hits++;
-   return {...meta,id:imdb,imdb_id:imdb,...(tmdb?{tmdb_id:tmdb,moviedb_id:tmdb}:{})};
+   return {...meta,imdb_id:imdb,...(tmdb?{tmdb_id:tmdb,moviedb_id:tmdb}:{})};
   });
   log(`Wako catalog IMDb ids catalog=${req.params.id} checked=${need.length} mapped=${hits}`);
   res.set('Cache-Control','private, no-store');
@@ -92,5 +91,5 @@ require('./wako-mode').install(app);
 const wakoModeManifestBase=manifest;
 manifest=function(){
  const m=wakoModeManifestBase();
- return {...m,version:'2.2.6',behaviorHints:{...(m.behaviorHints||{}),p2p:true}};
+ return {...m,version:'2.2.7',behaviorHints:{...(m.behaviorHints||{}),p2p:true}};
 };
