@@ -28,16 +28,17 @@ function selectFile(item,stream){
  if(Number.isInteger(stream?.fileIdx))return {id:Number(stream.fileIdx),name:wanted||null};
  return null;
 }
+function safeLog(...a){try{console.log(new Date().toISOString(),...a)}catch{}}
 async function getJson(url,opts={},fetchImpl=globalThis.fetch){
  const r=await fetchImpl(url,{...opts,signal:opts.signal||AbortSignal.timeout(9000)});
  let j=null;try{j=await r.json()}catch{}
- if(!r.ok||!j)throw new Error(`TorBox HTTP ${r.status}`);
+ if(!r.ok||!j){const d=String(j?.detail||j?.error||'').slice(0,180);throw new Error(d?`TorBox HTTP ${r.status}: ${d}`:`TorBox HTTP ${r.status}`)}
+ if(j.success===false)throw new Error(String(j.detail||j.error||'TorBox request failed').slice(0,180));
  return j;
 }
 async function myList(token,{id,bypassCache=false,fetchImpl=globalThis.fetch}={}){
  const q=new URLSearchParams({limit:'1000'});if(id!=null)q.set('id',String(id));if(bypassCache)q.set('bypass_cache','true');
  const j=await getJson(`${API}/torrents/mylist?${q}`,{headers:authHeaders(token)},fetchImpl);
- if(j.success===false)throw new Error(String(j.detail||j.error||'TorBox list failed'));
  return asList(j.data);
 }
 function torrentFileValue(buf){
@@ -55,14 +56,12 @@ async function createTorrent(token,hash,{fetchImpl=globalThis.fetch,torrentBuffe
  }else form.set('magnet',`magnet:?xt=urn:btih:${h}`);
  form.set('seed','3');form.set('allow_zip','false');
  const j=await getJson(`${API}/torrents/createtorrent`,{method:'POST',headers:authHeaders(token),body:form},fetchImpl);
- if(j.success===false)throw new Error(String(j.detail||j.error||'TorBox create failed'));
  const d=j?.data||{},id=Number(d.torrentId??d.torrent_id);
  return Number.isInteger(id)&&id>0?id:null;
 }
 async function controlTorrent(token,id,operation,{fetchImpl=globalThis.fetch}={}){
  const n=Number(id);if(!Number.isInteger(n)||n<1)return false;
- const j=await getJson(`${API}/torrents/controltorrent`,{method:'POST',headers:{...authHeaders(token),'Content-Type':'application/json'},body:JSON.stringify({torrent_id:n,operation})},fetchImpl);
- if(j.success===false)throw new Error(String(j.detail||j.error||'TorBox control failed'));
+ await getJson(`${API}/torrents/controltorrent`,{method:'POST',headers:{...authHeaders(token),'Content-Type':'application/json'},body:JSON.stringify({torrent_id:n,operation})},fetchImpl);
  return true;
 }
 function delay(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
@@ -73,41 +72,53 @@ function needsTorrentFileRepair(item){
 }
 async function pollItem(token,id,{fetchImpl=globalThis.fetch}={}){
  let latest=null;
- for(const ms of [0,300,700,1200,1800]){
+ for(const ms of [0,300,700,1200,1800,2500]){
   if(ms)await delay(ms);
-  try{const one=await myList(token,{id,bypassCache:true,fetchImpl});if(one[0]){latest=one[0];if(ready(latest))return latest}}catch{}
+  try{const one=await myList(token,{id,bypassCache:true,fetchImpl});if(one[0]){latest=one[0];if(ready(latest))return latest}}catch(e){safeLog('TorBox repair poll failed',String(e?.message||e).slice(0,180))}
  }
  return latest;
 }
 async function repairWithTorrentFile(token,hash,item,torrentBuffer,{fetchImpl=globalThis.fetch,name}={}){
  const h=normHash(hash),buf=torrentFileValue(torrentBuffer),oldId=Number(item?.id);
  if(!h||!buf||!Number.isInteger(oldId)||oldId<1)return item;
- const last=repairCooldown.get(h)||0;if(Date.now()-last<10*60*1000)return item;
- repairCooldown.set(h,Date.now());
+ const last=repairCooldown.get(h)||0;if(Date.now()-last<90*1000)return item;
+ safeLog(`TorBox torrent-file repair start hash=${h.slice(0,12)} oldId=${oldId} state=${stateOf(item)||'-'} files=${Array.isArray(item?.files)?item.files.length:0}`);
  try{
   await controlTorrent(token,oldId,'delete',{fetchImpl});
-  await delay(250);
+  safeLog(`TorBox torrent-file repair deleted oldId=${oldId}`);
+  await delay(400);
   const newId=await createTorrent(token,h,{fetchImpl,torrentBuffer:buf,name});
-  if(newId){const latest=await pollItem(token,newId,{fetchImpl});return latest||item}
- }catch{}
- return item;
+  if(!newId)throw new Error('TorBox create returned no torrent_id');
+  safeLog(`TorBox torrent-file repair uploaded newId=${newId}`);
+  const latest=await pollItem(token,newId,{fetchImpl});
+  if(latest){
+   repairCooldown.set(h,Date.now());
+   safeLog(`TorBox torrent-file repair result id=${newId} state=${stateOf(latest)||'-'} files=${Array.isArray(latest?.files)?latest.files.length:0} ready=${ready(latest)}`);
+   return latest;
+  }
+  throw new Error('TorBox fresh item was not returned after upload');
+ }catch(e){
+  repairCooldown.delete(h);
+  safeLog(`TorBox torrent-file repair failed hash=${h.slice(0,12)} error=${String(e?.message||e).slice(0,180)}`);
+  return item;
+ }
 }
 async function ensureItem(token,hash,{fetchImpl=globalThis.fetch,list=null,torrentBuffer=null,name}={}){
  const h=normHash(hash);if(!h)return null;
- let rows=list||await myList(token,{fetchImpl});
+ let rows=list||await myList(token,{bypassCache:true,fetchImpl});
  let item=rows.find(x=>normHash(x?.hash)===h)||null;
  if(item){
   if(ready(item))return item;
   const id=Number(item.id);
   if(Number.isInteger(id)&&id>0){
-   try{const fresh=await myList(token,{id,bypassCache:true,fetchImpl});if(fresh[0])item=fresh[0]}catch{}
+   try{const fresh=await myList(token,{id,bypassCache:true,fetchImpl});if(fresh[0])item=fresh[0]}catch(e){safeLog('TorBox fresh item lookup failed',String(e?.message||e).slice(0,180))}
   }
   if(ready(item))return item;
   if(needsTorrentFileRepair(item)&&torrentFileValue(torrentBuffer))return repairWithTorrentFile(token,h,item,torrentBuffer,{fetchImpl,name});
   return item;
  }
  let id=null;
- try{id=await createTorrent(token,h,{fetchImpl,torrentBuffer,name})}catch{}
+ try{id=await createTorrent(token,h,{fetchImpl,torrentBuffer,name})}catch(e){safeLog(`TorBox create failed hash=${h.slice(0,12)} error=${String(e?.message||e).slice(0,180)}`)}
  if(id){const latest=await pollItem(token,id,{fetchImpl});if(latest)return latest}
  try{rows=await myList(token,{bypassCache:true,fetchImpl})}catch{return null}
  return rows.find(x=>normHash(x?.hash)===h)||null;
@@ -135,13 +146,13 @@ function verifyTicket(value,secret){
 }
 async function prepareStreams(streams,{token,publicBase,fetchImpl=globalThis.fetch,max=3}={}){
  if(!token||!publicBase||!Array.isArray(streams)||!streams.length)return streams||[];
- let list;try{list=await myList(token,{fetchImpl})}catch{return streams}
+ let list;try{list=await myList(token,{bypassCache:true,fetchImpl})}catch(e){safeLog('TorBox initial list failed',String(e?.message||e).slice(0,180));return streams}
  const out=[];let processed=0;
  for(const s of streams){
   const h=normHash(s?.infoHash);
   if(!h||processed>=max){out.push(s);continue}
   processed++;
-  let item;try{item=await ensureItem(token,h,{fetchImpl,list,torrentBuffer:s?._sktTorrentBuffer||null,name:s?.behaviorHints?.filename||s?.name||'sktorrent'})}catch{item=null}
+  let item;try{item=await ensureItem(token,h,{fetchImpl,list,torrentBuffer:s?._sktTorrentBuffer||null,name:s?.behaviorHints?.filename||s?.name||'sktorrent'})}catch(e){safeLog(`TorBox ensure failed hash=${h.slice(0,12)} error=${String(e?.message||e).slice(0,180)}`);item=null}
   if(!item||!ready(item)){out.push(s);continue}
   const f=selectFile(item,s);if(!f){out.push(s);continue}
   const id=Number(item.id);if(!Number.isInteger(id)||id<1){out.push(s);continue}
