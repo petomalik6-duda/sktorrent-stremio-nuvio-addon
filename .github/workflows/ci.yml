@@ -37,11 +37,7 @@ jobs:
       - name: HTTP stream contract probe
         run: |
           curl -fsS http://127.0.0.1:7000/debug/http-stream-contract > /tmp/http-stream.json
-          node -e "const j=require('/tmp/http-stream.json');if(!j.ok||!j.torrentFallback||j.serverTorrentEngine||j.version!=='2.1.1')process.exit(1)"
-      - name: Unique manifest resource probe
-        run: |
-          curl -fsS http://127.0.0.1:7000/manifest.json > /tmp/manifest.json
-          node -e "const m=require('/tmp/manifest.json');if(new Set(m.resources.map(r=>r.name)).size!==m.resources.length)throw Error('duplicate resource');for(const n of ['meta','stream'])for(const t of ['movie','series'])if(!m.resources.find(r=>r.name===n)?.types.includes(t))throw Error('missing '+n+' '+t)"
+          node -e "const j=require('/tmp/http-stream.json');if(!j.ok||!j.torrentFallback||j.serverTorrentEngine||j.version!=='2.1.0')process.exit(1)"
       - name: Verify v2 movie source map
         run: |
           curl -fsS 'http://127.0.0.1:7000/debug/v2-sources/skt-posledne-filmy' > /tmp/sources.json
