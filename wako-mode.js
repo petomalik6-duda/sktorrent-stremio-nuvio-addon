@@ -1,5 +1,6 @@
 'use strict';
-const aliasPrefix='sktmovie';
+const aliasPrefix='sktmoviev24';
+const legacyAliasPrefix='sktmovie';
 
 function imdbId(meta){
  for(const value of [meta?.imdb_id,meta?.imdbId,meta?.imdb,meta?.id]){
@@ -19,11 +20,10 @@ function tmdbId(meta){
  return null;
 }
 
-// Wako treats videos[] as an episode / multi-video list. SKTorrent movie and
-// concert cards are single-video items: the selected torrent files belong in
-// the stream response, not in meta.videos. Keep IMDb as Wako's documented
-// cross-addon lookup escape hatch, keep a TMDB card alias for our own routing,
-// and keep local sktc: identities for unmatched concerts.
+// Wako uses IMDb as its primary cross-addon join key for movie stream lookups.
+// If a verified IMDb id exists, make it the actual movie id. Only TMDB-only
+// items get a private alias so our own addon can still route them without
+// pretending that a non-existent IMDb id exists.
 function adaptMovie(meta){
  if(!meta||meta.type!=='movie')return meta;
  const id=String(meta.id||'');
@@ -37,17 +37,18 @@ function adaptMovie(meta){
 
  const result={...rest,type:'movie',media_type:'movie'};
  if(Object.keys(hints).length)result.behaviorHints=hints;
- if(imdb)result.imdb_id=imdb;
+ if(imdb){result.id=imdb;result.imdb_id=imdb;}
  if(tmdb){result.tmdb_id=tmdb;result.moviedb_id=tmdb;}
- if(tmdb&&/^tmdb:/i.test(id))result.id=aliasPrefix+tmdb;
+ if(!imdb&&tmdb&&/^tmdb:/i.test(id))result.id=aliasPrefix+tmdb;
  return result;
 }
 
 function adaptManifest(manifest){
+ const wakoPrefixes=[aliasPrefix,legacyAliasPrefix];
  return {...manifest,id:manifest.id+'.wako',name:manifest.name+' • Wako',resources:(manifest.resources||[]).map(r=>{
   if(!r||typeof r!=='object'||!['meta','stream'].includes(r.name)||!r.types?.includes('movie'))return r;
-  return {...r,idPrefixes:[...new Set([...(r.idPrefixes||manifest.idPrefixes||[]),aliasPrefix])]};
- }),idPrefixes:[...new Set([...(manifest.idPrefixes||[]),aliasPrefix])]};
+  return {...r,idPrefixes:[...new Set([...(r.idPrefixes||manifest.idPrefixes||[]),...wakoPrefixes])]};
+ }),idPrefixes:[...new Set([...(manifest.idPrefixes||[]),...wakoPrefixes])]};
 }
 
 function rewriteWakoUrl(url){
@@ -56,7 +57,7 @@ function rewriteWakoUrl(url){
  if(!match)return out;
  let id;try{id=decodeURIComponent(match[3])}catch{return out;}
  let type=match[2],target=id;
- const alias=id.match(/^sktmovie([1-9]\d*)(?::\d+:\d+)?$/i);
+ const alias=id.match(/^(?:sktmoviev24|sktmovie)([1-9]\d*)(?::\d+:\d+)?$/i);
  if(alias){type='movie';target=`tmdb:${alias[1]}`;}
  else if(type==='series'){
   const local=id.match(/^(sktc:[^:]+)(?::\d+:\d+)?$/i);
@@ -90,4 +91,4 @@ function install(app){
  app._router.stack.splice(index<0?app._router.stack.length:index,0,layer);
 }
 
-module.exports={adaptMovie,adaptManifest,middleware,install,imdbId,tmdbId,rewriteWakoUrl};
+module.exports={adaptMovie,adaptManifest,middleware,install,imdbId,tmdbId,rewriteWakoUrl,aliasPrefix,legacyAliasPrefix};
