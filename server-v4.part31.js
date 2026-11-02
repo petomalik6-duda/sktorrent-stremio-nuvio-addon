@@ -1,13 +1,23 @@
 
-// v2.2.12: keep the last-known-good Wako identity contract, infer Wako
-// sessions even when the app calls the standard addon routes, and convert
-// SKTorrent infoHash streams into normal HTTPS URLs. Ready TorBox items use
-// /wako-direct; checking/downloading items use /wako-pending so Wako never
-// falls back to its own "Add to TorBox" action.
+// v2.2.13: keep SKTorrent visible in Wako while TorBox is preparing a torrent.
+// Ready TorBox items are exposed as HTTPS Direct streams. Unready items keep the
+// last-known-good infoHash fallback, while the bridge uploads the real .torrent
+// file (kept server-side only) so private tracker metadata is preserved.
 require('./wako-mode').install(app);
 const torboxDirect=require('./torbox-direct');
 const wakoTorboxToken=String(process.env.TORBOX_API_TOKEN||'').trim();
 log(`Wako TorBox bridge configured=${Boolean(wakoTorboxToken)}`);
+
+// The raw .torrent buffer is deliberately non-enumerable. It exists only long
+// enough for the server-side TorBox bridge and can never appear in Stremio/Wako
+// JSON responses or normal logging.
+const wakoMakeStreamBase=makeStream;
+makeStream=function(x,td,f,base){
+ const s=wakoMakeStreamBase(x,td,f,base);
+ if(Buffer.isBuffer(td?._sktTorrentBuffer))Object.defineProperty(s,'_sktTorrentBuffer',{value:td._sktTorrentBuffer,enumerable:false,configurable:false,writable:false});
+ return s;
+};
+
 const wakoDirectStreamBase=stream;
 stream=async function(req,res,c){
  const json=res.json;
@@ -16,8 +26,8 @@ stream=async function(req,res,c){
    const before=body.streams;
    const after=await torboxDirect.prepareStreams(before,{token:wakoTorboxToken,publicBase:baseUrl(req)});
    const direct=after.filter(s=>typeof s?.url==='string'&&/\/wako-direct\//.test(s.url)).length;
-   const pending=after.filter(s=>typeof s?.url==='string'&&/\/wako-pending\//.test(s.url)).length;
-   log(`Wako TorBox conversion attempted original=${before.length} direct=${direct} pending=${pending}`);
+   const fallback=after.filter(s=>typeof s?.infoHash==='string').length;
+   log(`Wako TorBox conversion attempted original=${before.length} direct=${direct} fallback=${fallback}`);
    body={...body,streams:after};
    res.set('Cache-Control','private, no-store');
   }
@@ -41,28 +51,7 @@ app.get('/wako-direct/:ticket',async(req,res)=>{
  }
 });
 
-app.get('/wako-pending/:ticket',async(req,res)=>{
- if(!wakoTorboxToken)return res.status(503).send('Direct playback is not configured');
- const p=torboxDirect.verifyPendingTicket(req.params.ticket,wakoTorboxToken);
- if(!p)return res.status(403).send('Invalid or expired playback link');
- try{
-  const target=await torboxDirect.resolvePending(wakoTorboxToken,p,{attempts:6,delayMs:1000});
-  if(!target){
-   res.set('Cache-Control','private, no-store');
-   res.set('Retry-After','5');
-   return res.status(503).send('TorBox is still preparing this stream. Open it again when it is ready.');
-  }
-  const u=await torboxDirect.requestDownloadUrl(wakoTorboxToken,target.torrentId,target.fileId);
-  if(!u)return res.status(502).send('TorBox did not return a playable URL');
-  res.set('Cache-Control','private, no-store');
-  return res.redirect(302,u);
- }catch(e){
-  log('Wako TorBox pending redirect failed',e.message);
-  return res.status(502).send('TorBox direct playback unavailable');
- }
-});
-
-app.get('/debug/wako-direct',(_q,r)=>r.json({ok:true,configured:Boolean(wakoTorboxToken),mode:'server-side-torbox-direct-or-pending'}));
+app.get('/debug/wako-direct',(_q,r)=>r.json({ok:true,configured:Boolean(wakoTorboxToken),mode:'server-side-torbox-file-upload-with-torrent-fallback'}));
 
 const kabatTorboxHash='2c06eefc81b03b861c97292001da670f1ba4b0b2';
 async function getSafeKabatTorboxState(){
@@ -88,8 +77,6 @@ async function getSafeKabatTorboxState(){
  }
 }
 
-// Safe one-title production diagnostic. Never returns the API token, URLs,
-// headers, filenames, or any account-wide torrent data.
 app.get('/debug/wako-torbox-kabat',async(_q,r)=>{
  const state=await getSafeKabatTorboxState();
  return r.status(state.ok?200:502).json(state);
@@ -104,4 +91,4 @@ if(wakoTorboxToken){
 }
 
 const wakoModeManifestBase=manifest;
-manifest=function(){return {...wakoModeManifestBase(),version:'2.2.12'}};
+manifest=function(){return {...wakoModeManifestBase(),version:'2.2.13'}};
