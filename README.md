@@ -102,3 +102,18 @@ ponechať pôvodný torrentový fallback. Trvalá torrent gateway sa týmto depl
 nezavádza: existujúca Render služba je free web bez torrent engine a vyhradeného
 úložiska. Nevytvárame ďalšie platené zdroje. Existujúca vlastná gateway/CDN môže
 svoje stabilné video URL dodávať do vyššie uvedeného registra.
+
+## Kompatibilita manifestu v2.1.1
+
+Manifest inzeruje každý názov resource (`catalog`, `meta`, `stream`) iba raz.
+`meta` a `stream` majú spoločný zoznam `types: [movie, series]` a zjednotené
+`idPrefixes`. Klienti, ktorí indexujú resources podľa mena, tak nestratia movie
+podporu prepísaním neskorším series descriptorom. Existujúce ID ani stream odpovede
+sa nemenia; pri zjednotenom zozname prefixov môže klient poslať aj kombináciu typu
+a ID, ktorá nemá zdroj, a handler vtedy vráti prázdny výsledok.
+
+Regresné testy simulujú klienta, ktorý si resources uloží podľa mena, a overujú
+zachovanie oboch typov aj lokálnych koncertov, People bridge a seriálových prefixov.
+`/debug/manifest-resources` umožňuje overiť nasadený kontrakt bez osobných údajov.
+Po aktualizácii treba vo Wako obnoviť manifest v detaile doplnku a znovu otvoriť
+koncert. Samotný úspešný serverový probe nepotvrdzuje správanie prehrávacej aplikácie.
