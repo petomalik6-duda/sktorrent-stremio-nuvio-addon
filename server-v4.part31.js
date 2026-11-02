@@ -1,5 +1,5 @@
 
-// v2.2.3: opt-in Wako movie contract plus TMDB -> IMDb cross-addon enrichment.
+// v2.2.4: opt-in Wako movie contract with TMDB -> IMDb enrichment and IMDb-primary cross-addon ids.
 const {resolveTmdbToImdb}=require('./external-id-resolver');
 const wakoImdbResolveBase=resolveMeta;
 resolveMeta=async function(req,x,type,c,concert=false){
@@ -17,4 +17,4 @@ resolveMeta=async function(req,x,type,c,concert=false){
 
 require('./wako-mode').install(app);
 const wakoModeManifestBase=manifest;
-manifest=function(){return {...wakoModeManifestBase(),version:'2.2.3'}};
+manifest=function(){return {...wakoModeManifestBase(),version:'2.2.4'}};
