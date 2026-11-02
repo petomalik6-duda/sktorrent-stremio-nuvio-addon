@@ -5,6 +5,7 @@
 require('./wako-mode').install(app);
 const torboxDirect=require('./torbox-direct');
 const wakoTorboxToken=String(process.env.TORBOX_API_TOKEN||'').trim();
+log(`Wako TorBox bridge configured=${Boolean(wakoTorboxToken)}`);
 const wakoDirectStreamBase=stream;
 stream=async function(req,res,c){
  const json=res.json;
