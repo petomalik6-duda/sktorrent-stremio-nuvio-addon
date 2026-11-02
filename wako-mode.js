@@ -1,7 +1,5 @@
 'use strict';
-const aliasPrefix='sktmoviev27';
-const legacyAliasPrefix='sktmovie';
-const legacyAliasPrefixes=['sktmoviev24',legacyAliasPrefix];
+const aliasPrefix='sktmovie';
 
 function imdbId(meta){
  for(const value of [meta?.imdb_id,meta?.imdbId,meta?.imdb,meta?.id]){
@@ -21,9 +19,9 @@ function tmdbId(meta){
  return null;
 }
 
-// Wako documents imdb_id as the escape hatch for add-ons that keep their own
-// stable item IDs but want IMDb-based stream lookup. Keep our TMDB-derived
-// private alias as meta.id and expose verified IMDb separately as imdb_id.
+// Last-known-good Wako movie contract from v2.2.2: movies and concerts stay
+// single-video items, our own stable alias is kept for TMDB-backed cards, and
+// IMDb is exposed only as the documented cross-addon escape hatch.
 function adaptMovie(meta){
  if(!meta||meta.type!=='movie')return meta;
  const id=String(meta.id||'');
@@ -44,11 +42,10 @@ function adaptMovie(meta){
 }
 
 function adaptManifest(manifest){
- const wakoPrefixes=[aliasPrefix,...legacyAliasPrefixes];
  return {...manifest,id:manifest.id+'.wako',name:manifest.name+' • Wako',resources:(manifest.resources||[]).map(r=>{
   if(!r||typeof r!=='object'||!['meta','stream'].includes(r.name)||!r.types?.includes('movie'))return r;
-  return {...r,idPrefixes:[...new Set([...(r.idPrefixes||manifest.idPrefixes||[]),...wakoPrefixes])]};
- }),idPrefixes:[...new Set([...(manifest.idPrefixes||[]),...wakoPrefixes])]};
+  return {...r,idPrefixes:[...new Set([...(r.idPrefixes||manifest.idPrefixes||[]),aliasPrefix])]};
+ }),idPrefixes:[...new Set([...(manifest.idPrefixes||[]),aliasPrefix])]};
 }
 
 function rewriteWakoUrl(url){
@@ -57,7 +54,7 @@ function rewriteWakoUrl(url){
  if(!match)return out;
  let id;try{id=decodeURIComponent(match[3])}catch{return out;}
  let type=match[2],target=id;
- const alias=id.match(/^(?:sktmoviev27|sktmoviev24|sktmovie)([1-9]\d*)(?::\d+:\d+)?$/i);
+ const alias=id.match(/^sktmovie([1-9]\d*)(?::\d+:\d+)?$/i);
  if(alias){type='movie';target=`tmdb:${alias[1]}`;}
  else if(type==='series'){
   const local=id.match(/^(sktc:[^:]+)(?::\d+:\d+)?$/i);
@@ -91,4 +88,4 @@ function install(app){
  app._router.stack.splice(index<0?app._router.stack.length:index,0,layer);
 }
 
-module.exports={adaptMovie,adaptManifest,middleware,install,imdbId,tmdbId,rewriteWakoUrl,aliasPrefix,legacyAliasPrefix,legacyAliasPrefixes};
+module.exports={adaptMovie,adaptManifest,middleware,install,imdbId,tmdbId,rewriteWakoUrl};

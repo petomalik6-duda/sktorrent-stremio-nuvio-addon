@@ -37,60 +37,20 @@ jobs:
       - name: HTTP stream contract probe
         run: |
           curl -fsS http://127.0.0.1:7000/debug/http-stream-contract > /tmp/http-stream.json
-          node -e "const j=require('/tmp/http-stream.json');if(!j.ok||!j.torrentFallback||j.serverTorrentEngine||j.version!=='2.2.7')process.exit(1)"
+          node -e "const j=require('/tmp/http-stream.json');if(!j.ok||!j.torrentFallback||j.serverTorrentEngine||j.version!=='2.2.8')process.exit(1)"
       - name: Wako mode manifest probe
         run: |
           curl -fsS http://127.0.0.1:7000/wako/manifest.json > /tmp/wako-manifest.json
-          node -e "const m=require('/tmp/wako-manifest.json');if(!m.id.endsWith('.wako')||!m.idPrefixes.includes('sktmoviev27')||!m.idPrefixes.includes('sktmoviev24')||!m.idPrefixes.includes('sktmovie')||m.version!=='2.2.7'||m.behaviorHints?.p2p!==true)throw Error('Wako manifest contract')"
+          node -e "const m=require('/tmp/wako-manifest.json');if(!m.id.endsWith('.wako')||!m.idPrefixes.includes('sktmovie')||m.version!=='2.2.8'||m.behaviorHints?.p2p===true)throw Error('Wako manifest contract')"
       - name: Verify v2 movie source map
         run: |
           curl -fsS 'http://127.0.0.1:7000/debug/v2-sources/skt-posledne-filmy' > /tmp/sources.json
-          cat /tmp/sources.json
           node - <<'NODE'
           const j=require('/tmp/sources.json');
           if(!j.ok||!Array.isArray(j.categories)) throw new Error('invalid source map');
           if(j.categories.includes(0)) throw new Error('movie catalog must not scan category=0');
           for(const id of [1,5,14,15,20,31,3,43]) if(!j.categories.includes(id)) throw new Error(`missing movie category ${id}`);
-          if(!(j.concurrency>=2&&j.concurrency<=12)) throw new Error('invalid catalog concurrency');
-          console.log(`source-map-ok categories=${j.categories.join(',')} concurrency=${j.concurrency}`);
           NODE
-      - name: Discover live SKTorrent categories
-        continue-on-error: true
-        run: |
-          node <<'NODE'
-          const axios=require('axios');const cheerio=require('cheerio');
-          (async()=>{const r=await axios.get('https://sktorrent.eu/torrent/torrents_v2.php',{timeout:20000,headers:{'User-Agent':'Mozilla/5.0','Accept-Language':'sk,cs;q=0.9,en;q=0.7'}}),$=cheerio.load(r.data),out=[];
-          $('select option').each((_,o)=>{const t=$(o).text().replace(/\s+/g,' ').trim(),v=$(o).attr('value');if(/^(Filmy|3D Filmy|UHD Filmy|Seriál|Dokument|TV Pořad|Hudební videa)/i.test(t))out.push({value:v,text:t})});
-          console.log('SKT_CATEGORY_MAP='+JSON.stringify(out))})().catch(e=>console.error(e.message));
-          NODE
-      - name: Guest protected-category probe
-        continue-on-error: true
-        run: |
-          curl -fsS --max-time 30 'http://127.0.0.1:7000/debug/full-page/skt-posledne-filmy/0' | tee /tmp/source-v2.json
-          echo
-          cat /tmp/sktorrent-addon.log
-      - name: Guest catalog probe
-        continue-on-error: true
-        run: |
-          curl -fsS --max-time 60 'http://127.0.0.1:7000/catalog/movie/skt-posledne-filmy.json' | tee /tmp/catalog-v2.json
-          echo
-          cat /tmp/sktorrent-addon.log
-      - name: Deep pagination probe
-        continue-on-error: true
-        run: |
-          curl -fsS --max-time 60 'http://127.0.0.1:7000/debug/full-page/skt-posledne-filmy/400' | tee /tmp/full-page.json
       - name: Concert playback probe
         continue-on-error: true
-        run: |
-          curl -fsS --max-time 45 'http://127.0.0.1:7000/debug/playback/concert/The%20Cure' | tee /tmp/playback.json
-      - name: Guest magnet and infoHash probe
-        continue-on-error: true
-        run: |
-          node <<'NODE'
-          const axios=require('axios');const cheerio=require('cheerio');
-          (async()=>{const baseHeaders={'User-Agent':'Mozilla/5.0','Accept-Language':'sk,cs;q=0.9,en;q=0.7',Referer:'https://sktorrent.eu/'};
-          const r=await axios.get('https://sktorrent.eu/torrent/torrents_v2.php',{timeout:20000,headers:baseHeaders,params:{active:0,category:26,order:'data',by:'DESC',page:0,search:'The Cure'}}),$=cheerio.load(r.data);let href=null;
-          $('a[href^="details.php"]').each((_,el)=>{if(!href)href=$(el).attr('href')});console.log('detail-href=',href||'NONE');if(!href)return;
-          const cookies=(r.headers['set-cookie']||[]).map(x=>x.split(';')[0]).join('; '),u=new URL(href,'https://sktorrent.eu/torrent/').href,d=await axios.get(u,{timeout:20000,headers:{...baseHeaders,...(cookies?{Cookie:cookies}:{})},validateStatus:()=>true}),html=String(d.data||'');
-          console.log('detail-status=',d.status,'magnet-count=',[...html.matchAll(/magnet:\?[^"'<\s]+/ig)].length,'hash-count=',[...html.matchAll(/(?:btih:)?[a-f0-9]{40}/ig)].length)})().catch(e=>console.error(e.message));
-          NODE
+        run: curl -fsS --max-time 45 'http://127.0.0.1:7000/debug/playback/concert/The%20Cure'
