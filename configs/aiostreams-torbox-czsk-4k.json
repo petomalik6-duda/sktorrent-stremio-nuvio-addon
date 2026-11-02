@@ -1,0 +1,149 @@
+{
+  "metadata": {
+    "id": "petomalik6-duda.torbox-czsk-4k",
+    "name": "TorBox CZ/SK 4K",
+    "description": "TorBox setup prioritising CZ → SK → EN, then 2160p → 1080p → 720p, DV/HDR, Atmos/DTS-HD, cached streams and larger files.",
+    "author": "petomalik6-duda",
+    "source": "external",
+    "version": "1.0.0",
+    "category": "Debrid",
+    "services": ["torbox"],
+    "serviceRequired": true,
+    "setToSaveInstallMenu": true,
+    "sourceUrl": "https://raw.githubusercontent.com/petomalik6-duda/sktorrent-stremio-nuvio-addon/main/configs/aiostreams-torbox-czsk-4k.json"
+  },
+  "config": {
+    "presets": [
+      {
+        "type": "torrentio",
+        "instanceId": "tb1",
+        "enabled": true,
+        "options": {
+          "name": "Torrentio",
+          "timeout": 5000,
+          "resources": ["stream"],
+          "providers": [],
+          "useMultipleInstances": false
+        }
+      },
+      {
+        "type": "comet",
+        "instanceId": "tb2",
+        "enabled": true,
+        "options": {
+          "name": "Comet",
+          "timeout": 7000,
+          "resources": ["stream"],
+          "includeP2P": false,
+          "removeTrash": true,
+          "mediaTypes": []
+        }
+      },
+      {
+        "type": "stremthruTorz",
+        "instanceId": "tb3",
+        "enabled": true,
+        "options": {
+          "name": "StremThru Torz",
+          "timeout": 7000,
+          "resources": ["stream"],
+          "mediaTypes": [],
+          "includeP2P": false,
+          "useMultipleInstances": false
+        }
+      },
+      {
+        "type": "knaben",
+        "instanceId": "tb4",
+        "enabled": true,
+        "options": {
+          "name": "Knaben",
+          "timeout": 7000,
+          "mediaTypes": [],
+          "useMultipleInstances": false
+        }
+      },
+      {
+        "type": "mediafusion",
+        "instanceId": "tb5",
+        "enabled": true,
+        "options": {
+          "name": "MediaFusion",
+          "timeout": 7000,
+          "resources": ["stream", "catalog", "meta"],
+          "useCachedResultsOnly": true,
+          "enableWatchlistCatalogs": false,
+          "downloadViaBrowser": false,
+          "contributorStreams": false,
+          "certificationLevelsFilter": [],
+          "nudityFilter": [],
+          "mediaTypes": []
+        }
+      }
+    ],
+    "formatter": {
+      "id": "torbox",
+      "definition": {
+        "name": "",
+        "description": ""
+      }
+    },
+    "preferredResolutions": [
+      "2160p",
+      "1080p",
+      "720p",
+      "576p",
+      "480p",
+      "Unknown"
+    ],
+    "preferredLanguages": [
+      "Czech",
+      "Slovak",
+      "English",
+      "Original",
+      "Dual Audio",
+      "Multi",
+      "Dubbed",
+      "Unknown"
+    ],
+    "preferredVisualTags": [
+      "HDR+DV",
+      "DV",
+      "HDR10+",
+      "HDR10",
+      "HDR"
+    ],
+    "preferredAudioTags": [
+      "Atmos",
+      "DTS:X",
+      "DTS-HD MA",
+      "TrueHD",
+      "DTS-HD",
+      "DD+",
+      "DTS",
+      "DD",
+      "AAC",
+      "Unknown"
+    ],
+    "excludedQualities": ["CAM", "SCR", "TS", "TC"],
+    "excludedVisualTags": ["3D"],
+    "sortCriteria": {
+      "global": [
+        {"key": "language", "direction": "desc"},
+        {"key": "resolution", "direction": "desc"},
+        {"key": "visualTag", "direction": "desc"},
+        {"key": "audioTag", "direction": "desc"},
+        {"key": "cached", "direction": "desc"},
+        {"key": "size", "direction": "desc"}
+      ]
+    },
+    "deduplicator": {
+      "enabled": true,
+      "multiGroupBehaviour": "aggressive",
+      "keys": ["filename", "infoHash"],
+      "cached": "single_result",
+      "uncached": "per_service",
+      "p2p": "single_result"
+    }
+  }
+}
