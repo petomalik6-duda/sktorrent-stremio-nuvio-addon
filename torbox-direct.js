@@ -6,8 +6,13 @@ const VIDEO_RE=/\.(mkv|mp4|m4v|avi|mov|webm|ts|m2ts)$/i;
 function normHash(v){const s=String(v||'').trim().toLowerCase();return /^[a-f0-9]{40}$/.test(s)?s:null}
 function authHeaders(token){return {Authorization:`Bearer ${token}`,Accept:'application/json'}}
 function asList(data){if(Array.isArray(data))return data;if(data&&typeof data==='object')return[data];return[]}
-function ready(item){if(!item)return false;if(item.downloadPresent===true||item.downloadFinished===true)return true;return /cached|downloaded|completed|finished|ready/i.test(String(item.downloadState||''))}
-function fileName(f){return String(f?.name||f?.shortName||'').replace(/\\/g,'/')}
+function ready(item){
+ if(!item)return false;
+ if(item.download_present===true||item.downloadPresent===true||item.download_finished===true||item.downloadFinished===true)return true;
+ const state=String(item.download_state??item.downloadState??item.state??item.status??'');
+ return /cached|uploading|seeding|completed|finished|ready/i.test(state);
+}
+function fileName(f){return String(f?.name||f?.short_name||f?.shortName||'').replace(/\\/g,'/')}
 function baseName(v){return String(v||'').replace(/\\/g,'/').split('/').pop().toLowerCase()}
 function selectFile(item,stream){
  const files=Array.isArray(item?.files)?item.files:[];
@@ -16,7 +21,7 @@ function selectFile(item,stream){
  let hit=null;
  if(wantedBase)hit=files.find(f=>{const n=fileName(f).toLowerCase(),b=baseName(n);return n===wanted.toLowerCase()||b===wantedBase});
  if(!hit&&Number.isInteger(stream?.fileIdx))hit=files.find(f=>Number(f?.id)===Number(stream.fileIdx))||files[stream.fileIdx]||null;
- if(!hit)hit=[...files].filter(f=>VIDEO_RE.test(fileName(f))||/^video\//i.test(String(f?.mimetype||''))).sort((a,b)=>(Number(b?.size)||0)-(Number(a?.size)||0))[0]||null;
+ if(!hit)hit=[...files].filter(f=>VIDEO_RE.test(fileName(f))||/^video\//i.test(String(f?.mimetype||f?.mime_type||''))).sort((a,b)=>(Number(b?.size)||0)-(Number(a?.size)||0))[0]||null;
  if(hit&&Number.isInteger(Number(hit.id)))return {id:Number(hit.id),name:fileName(hit)||wanted||null};
  if(Number.isInteger(stream?.fileIdx))return {id:Number(stream.fileIdx),name:wanted||null};
  return null;
@@ -27,8 +32,8 @@ async function getJson(url,opts={},fetchImpl=globalThis.fetch){
  if(!r.ok||!j)throw new Error(`TorBox HTTP ${r.status}`);
  return j;
 }
-async function myList(token,{id,fetchImpl=globalThis.fetch}={}){
- const q=new URLSearchParams({limit:'1000'});if(id!=null)q.set('id',String(id));
+async function myList(token,{id,bypassCache=false,fetchImpl=globalThis.fetch}={}){
+ const q=new URLSearchParams({limit:'1000'});if(id!=null)q.set('id',String(id));if(bypassCache)q.set('bypass_cache','true');
  const j=await getJson(`${API}/torrents/mylist?${q}`,{headers:authHeaders(token)},fetchImpl);
  if(j.success===false)throw new Error(String(j.detail||j.error||'TorBox list failed'));
  return asList(j.data);
@@ -36,19 +41,34 @@ async function myList(token,{id,fetchImpl=globalThis.fetch}={}){
 async function createTorrent(token,hash,{fetchImpl=globalThis.fetch}={}){
  const form=new FormData();form.set('magnet',`magnet:?xt=urn:btih:${hash}`);form.set('seed','3');form.set('allow_zip','false');
  const j=await getJson(`${API}/torrents/createtorrent`,{method:'POST',headers:authHeaders(token),body:form},fetchImpl);
+ if(j.success===false)throw new Error(String(j.detail||j.error||'TorBox create failed'));
  const d=j?.data||{},id=Number(d.torrentId??d.torrent_id);
  return Number.isInteger(id)&&id>0?id:null;
 }
+function delay(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
 async function ensureItem(token,hash,{fetchImpl=globalThis.fetch,list=null}={}){
  const h=normHash(hash);if(!h)return null;
  let rows=list||await myList(token,{fetchImpl});
  let item=rows.find(x=>normHash(x?.hash)===h)||null;
- if(item)return item;
- try{
-  const id=await createTorrent(token,h,{fetchImpl});
-  if(id){const one=await myList(token,{id,fetchImpl});item=one[0]||null;if(item)return item}
- }catch{}
- rows=await myList(token,{fetchImpl});
+ if(item){
+  if(ready(item))return item;
+  const id=Number(item.id);
+  if(Number.isInteger(id)&&id>0){
+   try{const fresh=await myList(token,{id,bypassCache:true,fetchImpl});if(fresh[0])return fresh[0]}catch{}
+  }
+  return item;
+ }
+ let id=null;
+ try{id=await createTorrent(token,h,{fetchImpl})}catch{}
+ if(id){
+  let latest=null;
+  for(const ms of [0,250,500,750]){
+   if(ms)await delay(ms);
+   try{const one=await myList(token,{id,bypassCache:true,fetchImpl});if(one[0]){latest=one[0];if(ready(latest))return latest}}catch{}
+  }
+  if(latest)return latest;
+ }
+ try{rows=await myList(token,{bypassCache:true,fetchImpl})}catch{return null}
  return rows.find(x=>normHash(x?.hash)===h)||null;
 }
 function ticket(payload,secret,ttlSeconds=3*60*60){
