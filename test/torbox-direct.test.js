@@ -1,8 +1,15 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');
-const {selectFile,ticket,verifyTicket,prepareStreams,requestDownloadUrl}=require('../torbox-direct');
+const {ready,selectFile,ticket,verifyTicket,prepareStreams,requestDownloadUrl}=require('../torbox-direct');
 
 const HASH='2c06eefc81b03b861c97292001da670f1ba4b0b2';
 const TOKEN='test-secret-token';
+
+test('ready accepts TorBox snake_case and camelCase status fields',()=>{
+ assert.equal(ready({download_present:true}),true);
+ assert.equal(ready({downloadPresent:true}),true);
+ assert.equal(ready({download_state:'cached'}),true);
+ assert.equal(ready({downloadState:'downloading'}),false);
+});
 
 test('selectFile prefers the SKTorrent filename and falls back to file index',()=>{
  const item={files:[{id:8,name:'extras/readme.txt',size:12},{id:4,name:'Kabát/Kabat koncert.mkv',size:1000}]};
@@ -17,15 +24,30 @@ test('signed direct ticket rejects tampering',()=>{
 });
 
 test('ready TorBox torrent is converted to a normal HTTPS stream for Wako',async()=>{
- const fetchImpl=async(url)=>({ok:true,status:200,json:async()=>({success:true,data:[{id:123,hash:HASH,downloadPresent:true,files:[{id:4,name:'Kabát/Kabat koncert.mkv',size:1000,mimetype:'video/x-matroska'}]}]})});
+ const fetchImpl=async(url)=>({ok:true,status:200,json:async()=>({success:true,data:[{id:123,hash:HASH,download_present:true,files:[{id:4,name:'Kabát/Kabat koncert.mkv',size:1000,mimetype:'video/x-matroska'}]}]})});
  const original={name:'SKTorrent • 1080p',title:'Kabát koncert',infoHash:HASH,fileIdx:1,behaviorHints:{filename:'Kabát/Kabat koncert.mkv'}};
  const out=await prepareStreams([original],{token:TOKEN,publicBase:'https://example.test',fetchImpl});
  assert.equal(out.length,1);assert.equal(out[0].infoHash,undefined);assert.match(out[0].url,/^https:\/\/example\.test\/wako-direct\//);assert.match(out[0].name,/Direct/);
  const signed=out[0].url.split('/').pop(),p=verifyTicket(signed,TOKEN);assert.equal(p.t,123);assert.equal(p.f,4);
 });
 
+test('missing torrent is auto-added and refreshed with bypass_cache before direct conversion',async()=>{
+ const calls=[];
+ const fetchImpl=async(url,opts={})=>{
+  calls.push({url:String(url),method:opts.method||'GET'});
+  if(String(url).includes('/createtorrent'))return {ok:true,status:200,json:async()=>({success:true,data:{torrent_id:123}})};
+  if(String(url).includes('id=123')&&String(url).includes('bypass_cache=true'))return {ok:true,status:200,json:async()=>({success:true,data:{id:123,hash:HASH,download_present:true,download_state:'cached',files:[{id:4,name:'Kabát/Kabat koncert.mkv',size:1000,mime_type:'video/x-matroska'}]}})};
+  return {ok:true,status:200,json:async()=>({success:true,data:[]})};
+ };
+ const original={name:'SKTorrent',infoHash:HASH,fileIdx:1,behaviorHints:{filename:'Kabát/Kabat koncert.mkv'}};
+ const out=await prepareStreams([original],{token:TOKEN,publicBase:'https://example.test',fetchImpl});
+ assert.match(out[0].url,/\/wako-direct\//);
+ assert.ok(calls.some(c=>c.method==='POST'&&c.url.includes('/createtorrent')));
+ assert.ok(calls.some(c=>c.url.includes('bypass_cache=true')));
+});
+
 test('unfinished TorBox torrent keeps torrent fallback',async()=>{
- const fetchImpl=async()=>({ok:true,status:200,json:async()=>({success:true,data:[{id:123,hash:HASH,downloadPresent:false,downloadFinished:false,downloadState:'downloading',files:[]}]})});
+ const fetchImpl=async()=>({ok:true,status:200,json:async()=>({success:true,data:[{id:123,hash:HASH,download_present:false,download_finished:false,download_state:'downloading',files:[]}]})});
  const original={name:'SKTorrent',infoHash:HASH,fileIdx:0};
  const out=await prepareStreams([original],{token:TOKEN,publicBase:'https://example.test',fetchImpl});
  assert.equal(out[0],original);
