@@ -9,7 +9,7 @@ function tracePlaybackContract(handler,resource){
    const item=body?.meta||(Array.isArray(body?.metas)?body.metas.find(m=>playbackContractIds.has(m?.id)):null);
    if(playbackContractIds.has(req.params.id)||item&&playbackContractIds.has(item.id)){
     const client=(String(req.get('user-agent')||'').match(/nuvio|wako|aiostreams|selection/i)||['other'])[0].toLowerCase();
-    log('playback-contract',JSON.stringify({resource,client,requestedType:req.params.type,requestedId:req.params.id,returnedType:item?.type,returnedId:item?.id,defaultVideoId:item?.behaviorHints?.defaultVideoId,videoIds:item?.videos?.slice(0,3).map(v=>v.id),streamCount:Array.isArray(body?.streams)?body.streams.length:undefined}));
+    log('playback-contract',JSON.stringify({resource,client,wakoMode:req.sktWakoCompat===true,originalType:req.sktWakoOriginalType,originalId:req.sktWakoOriginalId,requestedType:req.params.type,requestedId:req.params.id,returnedType:item?.type,returnedId:item?.id,defaultVideoId:item?.behaviorHints?.defaultVideoId,videoIds:item?.videos?.slice(0,3).map(v=>v.id),streamCount:Array.isArray(body?.streams)?body.streams.length:undefined}));
    }
    return json.call(this,body);
   };

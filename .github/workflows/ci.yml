@@ -37,7 +37,11 @@ jobs:
       - name: HTTP stream contract probe
         run: |
           curl -fsS http://127.0.0.1:7000/debug/http-stream-contract > /tmp/http-stream.json
-          node -e "const j=require('/tmp/http-stream.json');if(!j.ok||!j.torrentFallback||j.serverTorrentEngine||j.version!=='2.1.3')process.exit(1)"
+          node -e "const j=require('/tmp/http-stream.json');if(!j.ok||!j.torrentFallback||j.serverTorrentEngine||j.version!=='2.2.0')process.exit(1)"
+      - name: Wako mode manifest probe
+        run: |
+          curl -fsS http://127.0.0.1:7000/wako/manifest.json > /tmp/wako-manifest.json
+          node -e "const m=require('/tmp/wako-manifest.json');if(!m.id.endsWith('.wako')||!m.idPrefixes.includes('sktmovie')||m.version!=='2.2.0')throw Error('Wako manifest contract')"
       - name: Verify v2 movie source map
         run: |
           curl -fsS 'http://127.0.0.1:7000/debug/v2-sources/skt-posledne-filmy' > /tmp/sources.json

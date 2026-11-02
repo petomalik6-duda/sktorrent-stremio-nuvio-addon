@@ -102,3 +102,31 @@ ponechať pôvodný torrentový fallback. Trvalá torrent gateway sa týmto depl
 nezavádza: existujúca Render služba je free web bez torrent engine a vyhradeného
 úložiska. Nevytvárame ďalšie platené zdroje. Existujúca vlastná gateway/CDN môže
 svoje stabilné video URL dodávať do vyššie uvedeného registra.
+
+## Voliteľný režim Wako (2.2.0, overovanie kompatibility)
+
+K existujúcej adrese manifestu pridaj `/wako` hneď za hostiteľa:
+
+```text
+https://HOST/KONFIGURACNY_TOKEN/manifest.json
+https://HOST/wako/KONFIGURACNY_TOKEN/manifest.json
+```
+
+Osobný token zostáva rovnaký a netreba ho nikam zdieľať. V aplikácii sa režim
+zobrazí ako **SKTorrent Katalógy • Wako** s oddelenou identitou doplnku.
+Bežný manifest pre Nuvio/Stremio sa nemení.
+
+Režim poskytne TMDB filmu kartu `sktmovie671575` bez dvojbodky, ale predvolené
+video a jeho `videos[].id` ponechá `tmdb:671575`. Ostatné nainštalované zdrojové
+addony tak môžu dostať pôvodné spoločné video ID. Metadata obsahujú explicitný
+filmový typ a numerické TMDB ID. Seriály, IMDb identity a koncerty bez bezpečného
+TMDB párovania zostávajú nezmenené. Žiadny účet iného addonu sa na server nepridáva.
+
+Alias požiadavky sa na serveri bezpečne prevedú na pôvodný movie/TMDB handler.
+Stream odpovede vrátane `infoHash + fileIdx` zostávajú nezmenené. Režim nepridáva
+torrentový engine ani neodstraňuje potrebu resolvera pri výbere torrentového zdroja.
+
+Jednotkové a HTTP regresné testy overujú izoláciu režimu, zachovanie osobného
+konfiguračného tokenu, spoločného video ID a pôvodného manifestu. Úspešné testy
+servera samy nepotvrdzujú, že konkrétna verzia Wako zachová movie typ aj pri volaní
+ostatných addonov; rozhodujúce je overenie v aplikácii.
