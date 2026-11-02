@@ -1,8 +1,9 @@
 
-// v2.2.13: keep SKTorrent visible in Wako while TorBox is preparing a torrent.
+// v2.2.14: keep SKTorrent visible in Wako while TorBox is preparing a torrent.
 // Ready TorBox items are exposed as HTTPS Direct streams. Unready items keep the
 // last-known-good infoHash fallback, while the bridge uploads the real .torrent
-// file (kept server-side only) so private tracker metadata is preserved.
+// file (kept server-side only) and retries stuck checking/metaDL repairs using
+// fresh TorBox state rather than a stale cooldown.
 require('./wako-mode').install(app);
 const torboxDirect=require('./torbox-direct');
 const wakoTorboxToken=String(process.env.TORBOX_API_TOKEN||'').trim();
@@ -91,4 +92,4 @@ if(wakoTorboxToken){
 }
 
 const wakoModeManifestBase=manifest;
-manifest=function(){return {...wakoModeManifestBase(),version:'2.2.13'}};
+manifest=function(){return {...wakoModeManifestBase(),version:'2.2.14'}};
