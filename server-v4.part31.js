@@ -1,5 +1,5 @@
 
-// v2.2.5: Wako concert cards are enriched to IMDb in the catalog itself.
+// v2.2.6: Wako concert cards are enriched to IMDb in the catalog itself.
 // Wako can jump straight from a catalog card to stream lookup without fetching
 // meta first, so detail-only TMDB -> IMDb enrichment is not sufficient.
 const {resolveTmdbToImdb,resolveTmdbBatchToImdb}=require('./external-id-resolver');
@@ -79,6 +79,18 @@ function wakoWrapMappedRoute(base){
 meta=wakoWrapMappedRoute(meta);
 stream=wakoWrapMappedRoute(stream);
 
+// Wako documents infoHash streams as P2P. Advertise that capability explicitly
+// and include file size so the client has complete file metadata for selection.
+const wakoP2pMakeStreamBase=makeStream;
+makeStream=function(x,td,f,base){
+ const s=wakoP2pMakeStreamBase(x,td,f,base);
+ const videoSize=Number(f?.length||0);
+ return {...s,behaviorHints:{...(s.behaviorHints||{}),...(videoSize>0?{videoSize}:{})}};
+};
+
 require('./wako-mode').install(app);
 const wakoModeManifestBase=manifest;
-manifest=function(){return {...wakoModeManifestBase(),version:'2.2.5'}};
+manifest=function(){
+ const m=wakoModeManifestBase();
+ return {...m,version:'2.2.6',behaviorHints:{...(m.behaviorHints||{}),p2p:true}};
+};
