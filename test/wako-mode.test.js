@@ -1,12 +1,41 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');
 const express=require('express');const {adaptMovie,install}=require('../wako-mode');
+
 test('card alias is unambiguous while video identity remains shared',()=>{
  const movie={id:'tmdb:671575',type:'movie',name:'Kabát'};const result=adaptMovie(movie);
  assert.equal(result.id,'sktmovie671575');assert.equal(result.type,'movie');
  assert.equal(result.behaviorHints.defaultVideoId,'tmdb:671575');assert.deepEqual(result.videos,[{id:'tmdb:671575',title:'Kabát'}]);
  assert.deepEqual(movie,{id:'tmdb:671575',type:'movie',name:'Kabát'});assert.equal(result.imdb_id,undefined);
- for(const m of [{id:'tmdb:123',type:'series'},{id:'tt123',type:'movie'},{id:'sktc:abc',type:'movie'}])assert.strictEqual(adaptMovie(m),m);
+ for(const m of [{id:'tmdb:123',type:'series'},{id:'sktc:abc',type:'movie'}])assert.strictEqual(adaptMovie(m),m);
 });
+
+test('paired concert replaces internal SKTorrent video identity with IMDb when available',()=>{
+ const concert={id:'tmdb:671575',type:'movie',name:'Kabát',imdb_id:'tt1234567',behaviorHints:{defaultVideoId:'sktv:2c06'},videos:[{id:'sktv:2c06',title:'SKTorrent koncert'}]};
+ const result=adaptMovie(concert);
+ assert.equal(result.id,'sktmovie671575');
+ assert.equal(result.behaviorHints.defaultVideoId,'tt1234567');
+ assert.equal(result.videos[0].id,'tt1234567');
+ assert.equal(result.videos[0].title,'SKTorrent koncert');
+ assert.equal(concert.behaviorHints.defaultVideoId,'sktv:2c06');assert.equal(concert.videos[0].id,'sktv:2c06');
+});
+
+test('paired concert falls back to TMDB when IMDb is unavailable',()=>{
+ const concert={id:'tmdb:671575',type:'movie',name:'Kabát',videos:[{id:'sktc:2c06',title:'SKTorrent koncert'}]};
+ const result=adaptMovie(concert);
+ assert.equal(result.behaviorHints.defaultVideoId,'tmdb:671575');assert.equal(result.videos[0].id,'tmdb:671575');
+});
+
+test('IMDb movie or concert keeps its card ID but normalizes local video identity',()=>{
+ const concert={id:'tt7654321',type:'movie',name:'Live',videos:[{id:'sktv:abc',title:'Live source'}]};
+ const result=adaptMovie(concert);
+ assert.equal(result.id,'tt7654321');assert.equal(result.behaviorHints.defaultVideoId,'tt7654321');assert.equal(result.videos[0].id,'tt7654321');
+});
+
+test('local concert without standard identity remains untouched',()=>{
+ const local={id:'sktc:abc',type:'movie',name:'Local concert',behaviorHints:{defaultVideoId:'sktv:abc'},videos:[{id:'sktv:abc'}]};
+ assert.strictEqual(adaptMovie(local),local);
+});
+
 test('opt-in routing preserves config token, normalizes alias requests and leaves standard stream ID intact',async()=>{
  const app=express();
  const manifest={id:'community.sktorrent.catalogs',name:'SKTorrent',resources:[{name:'meta',types:['movie'],idPrefixes:['tmdb:']}],catalogs:[],idPrefixes:['tmdb:']};
