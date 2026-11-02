@@ -1,9 +1,9 @@
 
-// v2.2.14: keep SKTorrent visible in Wako while TorBox is preparing a torrent.
-// Ready TorBox items are exposed as HTTPS Direct streams. Unready items keep the
-// last-known-good infoHash fallback, while the bridge uploads the real .torrent
-// file (kept server-side only) and retries stuck checking/metaDL repairs using
-// fresh TorBox state rather than a stale cooldown.
+// v2.2.15: keep SKTorrent visible in Wako while TorBox prepares a torrent.
+// Ready TorBox items use HTTPS Direct streams. For downloading items we now
+// also probe TorBox requestdl using the original SKTorrent file index: if TorBox
+// already permits access, Wako gets Direct immediately; otherwise the visible
+// infoHash fallback remains until Download Ready.
 require('./wako-mode').install(app);
 const torboxDirect=require('./torbox-direct');
 const wakoTorboxToken=String(process.env.TORBOX_API_TOKEN||'').trim();
@@ -52,7 +52,7 @@ app.get('/wako-direct/:ticket',async(req,res)=>{
  }
 });
 
-app.get('/debug/wako-direct',(_q,r)=>r.json({ok:true,configured:Boolean(wakoTorboxToken),mode:'server-side-torbox-file-upload-with-torrent-fallback'}));
+app.get('/debug/wako-direct',(_q,r)=>r.json({ok:true,configured:Boolean(wakoTorboxToken),mode:'server-side-torbox-progressive-requestdl-with-torrent-fallback'}));
 
 const kabatTorboxHash='2c06eefc81b03b861c97292001da670f1ba4b0b2';
 async function getSafeKabatTorboxState(){
@@ -71,6 +71,9 @@ async function getSafeKabatTorboxState(){
    downloadPresent:item.download_present===true||item.downloadPresent===true,
    downloadFinished:item.download_finished===true||item.downloadFinished===true,
    files:files.length,
+   progress:item.progress??item.download_progress??item.downloadProgress??null,
+   seeds:item.seeds??item.seeders??item.seed_count??null,
+   peers:item.peers??item.peer_count??null,
    hasVideo:files.some(f=>/\.(mkv|mp4|m4v|avi|mov|webm|ts|m2ts)$/i.test(String(f?.name||f?.short_name||f?.shortName||'')))
   };
  }catch(e){
@@ -92,4 +95,4 @@ if(wakoTorboxToken){
 }
 
 const wakoModeManifestBase=manifest;
-manifest=function(){return {...wakoModeManifestBase(),version:'2.2.14'}};
+manifest=function(){return {...wakoModeManifestBase(),version:'2.2.15'}};

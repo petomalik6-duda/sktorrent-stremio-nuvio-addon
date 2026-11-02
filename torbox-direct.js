@@ -29,6 +29,13 @@ function selectFile(item,stream){
  return null;
 }
 function safeLog(...a){try{console.log(new Date().toISOString(),...a)}catch{}}
+function safeStateSummary(item){
+ const files=Array.isArray(item?.files)?item.files.length:0;
+ const progress=item?.progress??item?.download_progress??item?.downloadProgress??null;
+ const seeds=item?.seeds??item?.seeders??item?.seed_count??null;
+ const peers=item?.peers??item?.peer_count??null;
+ return `state=${stateOf(item)||'-'} files=${files} progress=${progress??'-'} seeds=${seeds??'-'} peers=${peers??'-'}`;
+}
 async function getJson(url,opts={},fetchImpl=globalThis.fetch){
  const r=await fetchImpl(url,{...opts,signal:opts.signal||AbortSignal.timeout(9000)});
  let j=null;try{j=await r.json()}catch{}
@@ -93,7 +100,7 @@ async function repairWithTorrentFile(token,hash,item,torrentBuffer,{fetchImpl=gl
   const latest=await pollItem(token,newId,{fetchImpl});
   if(latest){
    repairCooldown.set(h,Date.now());
-   safeLog(`TorBox torrent-file repair result id=${newId} state=${stateOf(latest)||'-'} files=${Array.isArray(latest?.files)?latest.files.length:0} ready=${ready(latest)}`);
+   safeLog(`TorBox torrent-file repair result id=${newId} ${safeStateSummary(latest)} ready=${ready(latest)}`);
    return latest;
   }
   throw new Error('TorBox fresh item was not returned after upload');
@@ -144,6 +151,17 @@ function verifyTicket(value,secret){
  if(!Number.isInteger(p?.t)||p.t<1||!Number.isInteger(p?.f)||p.f<0||!Number.isFinite(p?.e)||p.e<Math.floor(Date.now()/1000))return null;
  return p;
 }
+async function requestDownloadUrl(token,torrentId,fileId,{fetchImpl=globalThis.fetch}={}){
+ const q=new URLSearchParams({token,torrent_id:String(torrentId),file_id:String(fileId),redirect:'false',append_name:'true'});
+ const j=await getJson(`${API}/torrents/requestdl?${q}`,{headers:authHeaders(token)},fetchImpl);
+ const u=String(j?.data||'');let parsed;try{parsed=new URL(u)}catch{return null}
+ return parsed.protocol==='https:'?u:null;
+}
+function directStream(s,item,f,token,publicBase){
+ const id=Number(item?.id);if(!Number.isInteger(id)||id<1||!f)return null;
+ const t=ticket({t:id,f:f.id},token);
+ return {name:`${s.name||'SKTorrent'} • Direct`,title:`▶ Priame prehranie cez TorBox\n${s.title||''}`.trim(),url:`${String(publicBase).replace(/\/$/,'')}/wako-direct/${t}`,behaviorHints:{...(s.behaviorHints||{}),...(f.name?{filename:f.name}:{})}};
+}
 async function prepareStreams(streams,{token,publicBase,fetchImpl=globalThis.fetch,max=3}={}){
  if(!token||!publicBase||!Array.isArray(streams)||!streams.length)return streams||[];
  let list;try{list=await myList(token,{bypassCache:true,fetchImpl})}catch(e){safeLog('TorBox initial list failed',String(e?.message||e).slice(0,180));return streams}
@@ -153,18 +171,26 @@ async function prepareStreams(streams,{token,publicBase,fetchImpl=globalThis.fet
   if(!h||processed>=max){out.push(s);continue}
   processed++;
   let item;try{item=await ensureItem(token,h,{fetchImpl,list,torrentBuffer:s?._sktTorrentBuffer||null,name:s?.behaviorHints?.filename||s?.name||'sktorrent'})}catch(e){safeLog(`TorBox ensure failed hash=${h.slice(0,12)} error=${String(e?.message||e).slice(0,180)}`);item=null}
-  if(!item||!ready(item)){out.push(s);continue}
-  const f=selectFile(item,s);if(!f){out.push(s);continue}
-  const id=Number(item.id);if(!Number.isInteger(id)||id<1){out.push(s);continue}
-  const t=ticket({t:id,f:f.id},token);
-  out.push({name:`${s.name||'SKTorrent'} • Direct`,title:`▶ Priame prehranie cez TorBox\n${s.title||''}`.trim(),url:`${String(publicBase).replace(/\/$/,'')}/wako-direct/${t}`,behaviorHints:{...(s.behaviorHints||{}),...(f.name?{filename:f.name}:{})}});
+  if(!item){out.push(s);continue}
+  const f=selectFile(item,s),id=Number(item.id);
+  if(!ready(item)){
+   safeLog(`TorBox fallback id=${Number.isInteger(id)?id:'-'} ${safeStateSummary(item)} fileIdx=${Number.isInteger(s?.fileIdx)?s.fileIdx:'-'}`);
+   if(Number.isInteger(id)&&id>0&&f){
+    try{
+     const progressive=await requestDownloadUrl(token,id,f.id,{fetchImpl});
+     if(progressive){
+      const st=directStream(s,item,f,token,publicBase);
+      if(st){safeLog(`TorBox progressive direct available id=${id} state=${stateOf(item)||'-'} fileId=${f.id}`);out.push(st);continue}
+     }
+     safeLog(`TorBox progressive direct unavailable id=${id} state=${stateOf(item)||'-'} reason=no-https-link`);
+    }catch(e){safeLog(`TorBox progressive direct unavailable id=${id} state=${stateOf(item)||'-'} error=${String(e?.message||e).slice(0,180)}`)}
+   }
+   out.push(s);continue;
+  }
+  if(!f){out.push(s);continue}
+  const st=directStream(s,item,f,token,publicBase);if(!st){out.push(s);continue}
+  out.push(st);
  }
  return out;
-}
-async function requestDownloadUrl(token,torrentId,fileId,{fetchImpl=globalThis.fetch}={}){
- const q=new URLSearchParams({token,torrent_id:String(torrentId),file_id:String(fileId),redirect:'false',append_name:'true'});
- const j=await getJson(`${API}/torrents/requestdl?${q}`,{headers:authHeaders(token)},fetchImpl);
- const u=String(j?.data||'');let parsed;try{parsed=new URL(u)}catch{return null}
- return parsed.protocol==='https:'?u:null;
 }
 module.exports={normHash,ready,stateOf,selectFile,myList,createTorrent,controlTorrent,needsTorrentFileRepair,ensureItem,ticket,verifyTicket,prepareStreams,requestDownloadUrl};
