@@ -43,3 +43,15 @@ test('opt-in routing preserves config token and last-known-good alias',async()=>
   const j=await get('/wako/private-config/stream/series/sktmovie671575:1:1.json');assert.equal(j.request.type,'movie');assert.equal(j.request.id,'tmdb:671575');assert.equal(j.streams[0].fileIdx,0);
  }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve))}
 });
+
+test('standard Wako request marks subsequent same-client stream as Wako compatible',async()=>{
+ const app=express();
+ app.get('/catalog/movie/test.json',(q,r)=>r.json({wako:q.sktWakoCompat===true}));
+ app.get('/stream/:type/:id.json',(q,r)=>r.json({wako:q.sktWakoCompat===true,type:q.params.type,id:q.params.id}));
+ install(app);const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
+ const base='http://127.0.0.1:'+server.address().port;
+ try{
+  const first=await fetch(base+'/catalog/movie/test.json',{headers:{'user-agent':'Wako/8.0'},signal:AbortSignal.timeout(5000)});assert.equal(first.status,200);assert.equal((await first.json()).wako,true);
+  const second=await fetch(base+'/stream/series/tmdb%3A671575.json',{signal:AbortSignal.timeout(5000)});assert.equal(second.status,200);const body=await second.json();assert.equal(body.wako,true);assert.equal(body.type,'series');assert.equal(body.id,'tmdb:671575');
+ }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve))}
+});
