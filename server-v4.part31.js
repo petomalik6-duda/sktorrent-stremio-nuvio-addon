@@ -1,8 +1,9 @@
 
-// v2.2.10: keep the last-known-good Wako identity contract, infer Wako
-// sessions even when the app calls the standard addon routes, and optionally
-// convert ready SKTorrent infoHash streams into normal HTTPS playback URLs
-// through the user's own TorBox account. The API token stays server-side.
+// v2.2.11: keep the last-known-good Wako identity contract, infer Wako
+// sessions even when the app calls the standard addon routes, and convert
+// ready SKTorrent infoHash streams into normal HTTPS playback URLs through
+// the user's own TorBox account. Missing torrents are auto-added and then
+// refreshed with bypass_cache so cached items can become Direct immediately.
 require('./wako-mode').install(app);
 const torboxDirect=require('./torbox-direct');
 const wakoTorboxToken=String(process.env.TORBOX_API_TOKEN||'').trim();
@@ -41,4 +42,4 @@ app.get('/wako-direct/:ticket',async(req,res)=>{
 app.get('/debug/wako-direct',(_q,r)=>r.json({ok:true,configured:Boolean(wakoTorboxToken),mode:'server-side-torbox-redirect'}));
 
 const wakoModeManifestBase=manifest;
-manifest=function(){return {...wakoModeManifestBase(),version:'2.2.10'}};
+manifest=function(){return {...wakoModeManifestBase(),version:'2.2.11'}};
