@@ -1,9 +1,9 @@
 
-// v2.2.11: keep the last-known-good Wako identity contract, infer Wako
+// v2.2.12: keep the last-known-good Wako identity contract, infer Wako
 // sessions even when the app calls the standard addon routes, and convert
-// ready SKTorrent infoHash streams into normal HTTPS playback URLs through
-// the user's own TorBox account. Missing torrents are auto-added and then
-// refreshed with bypass_cache so cached items can become Direct immediately.
+// SKTorrent infoHash streams into normal HTTPS URLs. Ready TorBox items use
+// /wako-direct; checking/downloading items use /wako-pending so Wako never
+// falls back to its own "Add to TorBox" action.
 require('./wako-mode').install(app);
 const torboxDirect=require('./torbox-direct');
 const wakoTorboxToken=String(process.env.TORBOX_API_TOKEN||'').trim();
@@ -16,7 +16,8 @@ stream=async function(req,res,c){
    const before=body.streams;
    const after=await torboxDirect.prepareStreams(before,{token:wakoTorboxToken,publicBase:baseUrl(req)});
    const direct=after.filter(s=>typeof s?.url==='string'&&/\/wako-direct\//.test(s.url)).length;
-   log(`Wako TorBox conversion attempted original=${before.length} direct=${direct}`);
+   const pending=after.filter(s=>typeof s?.url==='string'&&/\/wako-pending\//.test(s.url)).length;
+   log(`Wako TorBox conversion attempted original=${before.length} direct=${direct} pending=${pending}`);
    body={...body,streams:after};
    res.set('Cache-Control','private, no-store');
   }
@@ -39,7 +40,29 @@ app.get('/wako-direct/:ticket',async(req,res)=>{
   return res.status(502).send('TorBox direct playback unavailable');
  }
 });
-app.get('/debug/wako-direct',(_q,r)=>r.json({ok:true,configured:Boolean(wakoTorboxToken),mode:'server-side-torbox-redirect'}));
+
+app.get('/wako-pending/:ticket',async(req,res)=>{
+ if(!wakoTorboxToken)return res.status(503).send('Direct playback is not configured');
+ const p=torboxDirect.verifyPendingTicket(req.params.ticket,wakoTorboxToken);
+ if(!p)return res.status(403).send('Invalid or expired playback link');
+ try{
+  const target=await torboxDirect.resolvePending(wakoTorboxToken,p,{attempts:6,delayMs:1000});
+  if(!target){
+   res.set('Cache-Control','private, no-store');
+   res.set('Retry-After','5');
+   return res.status(503).send('TorBox is still preparing this stream. Open it again when it is ready.');
+  }
+  const u=await torboxDirect.requestDownloadUrl(wakoTorboxToken,target.torrentId,target.fileId);
+  if(!u)return res.status(502).send('TorBox did not return a playable URL');
+  res.set('Cache-Control','private, no-store');
+  return res.redirect(302,u);
+ }catch(e){
+  log('Wako TorBox pending redirect failed',e.message);
+  return res.status(502).send('TorBox direct playback unavailable');
+ }
+});
+
+app.get('/debug/wako-direct',(_q,r)=>r.json({ok:true,configured:Boolean(wakoTorboxToken),mode:'server-side-torbox-direct-or-pending'}));
 
 const kabatTorboxHash='2c06eefc81b03b861c97292001da670f1ba4b0b2';
 async function getSafeKabatTorboxState(){
@@ -81,4 +104,4 @@ if(wakoTorboxToken){
 }
 
 const wakoModeManifestBase=manifest;
-manifest=function(){return {...wakoModeManifestBase(),version:'2.2.11'}};
+manifest=function(){return {...wakoModeManifestBase(),version:'2.2.12'}};

@@ -1,5 +1,5 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');
-const {ready,selectFile,ticket,verifyTicket,prepareStreams,requestDownloadUrl}=require('../torbox-direct');
+const {ready,selectFile,ticket,verifyTicket,pendingTicket,verifyPendingTicket,prepareStreams,resolvePending,requestDownloadUrl}=require('../torbox-direct');
 
 const HASH='2c06eefc81b03b861c97292001da670f1ba4b0b2';
 const TOKEN='test-secret-token';
@@ -21,6 +21,12 @@ test('signed direct ticket rejects tampering',()=>{
  const t=ticket({t:123,f:4},TOKEN,60),p=verifyTicket(t,TOKEN);
  assert.equal(p.t,123);assert.equal(p.f,4);
  assert.equal(verifyTicket(t+'x',TOKEN),null);
+});
+
+test('signed pending ticket carries only hash/index/basename and rejects tampering',()=>{
+ const t=pendingTicket({h:HASH,i:1,n:'Kabát/Kabat koncert.mkv'},TOKEN,60),p=verifyPendingTicket(t,TOKEN);
+ assert.equal(p.h,HASH);assert.equal(p.i,1);assert.equal(p.n,'kabat koncert.mkv');
+ assert.equal(verifyPendingTicket(t+'x',TOKEN),null);
 });
 
 test('ready TorBox torrent is converted to a normal HTTPS stream for Wako',async()=>{
@@ -46,11 +52,25 @@ test('missing torrent is auto-added and refreshed with bypass_cache before direc
  assert.ok(calls.some(c=>c.url.includes('bypass_cache=true')));
 });
 
-test('unfinished TorBox torrent keeps torrent fallback',async()=>{
- const fetchImpl=async()=>({ok:true,status:200,json:async()=>({success:true,data:[{id:123,hash:HASH,download_present:false,download_finished:false,download_state:'downloading',files:[]}]})});
- const original={name:'SKTorrent',infoHash:HASH,fileIdx:0};
+test('unfinished TorBox torrent becomes a normal pending HTTPS URL instead of infoHash fallback',async()=>{
+ const fetchImpl=async()=>({ok:true,status:200,json:async()=>({success:true,data:[{id:123,hash:HASH,download_present:false,download_finished:false,download_state:'checking',files:[]}]})});
+ const original={name:'SKTorrent',infoHash:HASH,fileIdx:0,behaviorHints:{filename:'Kabat concert.mkv'}};
  const out=await prepareStreams([original],{token:TOKEN,publicBase:'https://example.test',fetchImpl});
- assert.equal(out[0],original);
+ assert.equal(out[0].infoHash,undefined);assert.equal(out[0].fileIdx,undefined);
+ assert.match(out[0].url,/\/wako-pending\//);assert.match(out[0].name,/Preparing/);
+ const p=verifyPendingTicket(out[0].url.split('/').pop(),TOKEN);assert.equal(p.h,HASH);assert.equal(p.i,0);
+});
+
+test('resolvePending returns TorBox file once the item becomes ready',async()=>{
+ let calls=0;
+ const fetchImpl=async(url)=>{
+  calls++;
+  const isFresh=String(url).includes('bypass_cache=true');
+  if(calls<3)return {ok:true,status:200,json:async()=>({success:true,data:[{id:123,hash:HASH,download_state:'checking',files:[]}]})};
+  return {ok:true,status:200,json:async()=>({success:true,data:{id:123,hash:HASH,download_present:true,download_state:'cached',files:[{id:4,name:'Kabat concert.mkv',size:1000}]}})};
+ };
+ const target=await resolvePending(TOKEN,{h:HASH,i:0,n:'kabat concert.mkv'},{fetchImpl,attempts:3,delayMs:0});
+ assert.equal(target.torrentId,123);assert.equal(target.fileId,4);assert.ok(calls>=3);
 });
 
 test('requestDownloadUrl returns only HTTPS CDN links',async()=>{
