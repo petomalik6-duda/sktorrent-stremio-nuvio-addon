@@ -71,20 +71,46 @@ async function ensureItem(token,hash,{fetchImpl=globalThis.fetch,list=null}={}){
  try{rows=await myList(token,{bypassCache:true,fetchImpl})}catch{return null}
  return rows.find(x=>normHash(x?.hash)===h)||null;
 }
-function ticket(payload,secret,ttlSeconds=3*60*60){
- const p={t:Number(payload.t),f:Number(payload.f),e:Math.floor(Date.now()/1000)+ttlSeconds};
- if(!Number.isInteger(p.t)||p.t<1||!Number.isInteger(p.f)||p.f<0)throw new Error('invalid ticket payload');
- const b=Buffer.from(JSON.stringify(p)).toString('base64url');
+function signPayload(payload,secret){
+ const b=Buffer.from(JSON.stringify(payload)).toString('base64url');
  const sig=crypto.createHmac('sha256',secret).update(b).digest('base64url');
  return `${b}.${sig}`;
 }
-function verifyTicket(value,secret){
+function verifySignedPayload(value,secret){
  const [b,sig]=String(value||'').split('.');if(!b||!sig)return null;
  const expected=crypto.createHmac('sha256',secret).update(b).digest('base64url');
  const a=Buffer.from(sig),e=Buffer.from(expected);if(a.length!==e.length||!crypto.timingSafeEqual(a,e))return null;
- let p;try{p=JSON.parse(Buffer.from(b,'base64url').toString('utf8'))}catch{return null}
+ try{return JSON.parse(Buffer.from(b,'base64url').toString('utf8'))}catch{return null}
+}
+function ticket(payload,secret,ttlSeconds=3*60*60){
+ const p={t:Number(payload.t),f:Number(payload.f),e:Math.floor(Date.now()/1000)+ttlSeconds};
+ if(!Number.isInteger(p.t)||p.t<1||!Number.isInteger(p.f)||p.f<0)throw new Error('invalid ticket payload');
+ return signPayload(p,secret);
+}
+function verifyTicket(value,secret){
+ const p=verifySignedPayload(value,secret);
  if(!Number.isInteger(p?.t)||p.t<1||!Number.isInteger(p?.f)||p.f<0||!Number.isFinite(p?.e)||p.e<Math.floor(Date.now()/1000))return null;
  return p;
+}
+function pendingTicket(payload,secret,ttlSeconds=3*60*60){
+ const h=normHash(payload?.h),i=Number(payload?.i),n=baseName(payload?.n||'').slice(0,240);
+ const p={h,i:Number.isInteger(i)&&i>=0?i:-1,n,e:Math.floor(Date.now()/1000)+ttlSeconds};
+ if(!h)throw new Error('invalid pending ticket payload');
+ return signPayload(p,secret);
+}
+function verifyPendingTicket(value,secret){
+ const p=verifySignedPayload(value,secret);
+ if(!normHash(p?.h)||!Number.isInteger(p?.i)||p.i< -1||typeof p?.n!=='string'||p.n.length>240||!Number.isFinite(p?.e)||p.e<Math.floor(Date.now()/1000))return null;
+ return {...p,h:normHash(p.h)};
+}
+function pendingStream(stream,hash,{token,publicBase}){
+ const t=pendingTicket({h:hash,i:Number.isInteger(stream?.fileIdx)?stream.fileIdx:-1,n:stream?.behaviorHints?.filename||''},token);
+ return {
+  name:`${stream?.name||'SKTorrent'} • Preparing`,
+  title:`⏳ TorBox pripravuje stream\n${stream?.title||''}`.trim(),
+  url:`${String(publicBase).replace(/\/$/,'')}/wako-pending/${t}`,
+  behaviorHints:{...(stream?.behaviorHints||{})}
+ };
 }
 async function prepareStreams(streams,{token,publicBase,fetchImpl=globalThis.fetch,max=3}={}){
  if(!token||!publicBase||!Array.isArray(streams)||!streams.length)return streams||[];
@@ -94,14 +120,31 @@ async function prepareStreams(streams,{token,publicBase,fetchImpl=globalThis.fet
   const h=normHash(s?.infoHash);
   if(!h||converted>=max){out.push(s);continue}
   let item;try{item=await ensureItem(token,h,{fetchImpl,list})}catch{item=null}
-  if(!item||!ready(item)){out.push(s);continue}
-  const f=selectFile(item,s);if(!f){out.push(s);continue}
-  const id=Number(item.id);if(!Number.isInteger(id)||id<1){out.push(s);continue}
+  if(!item||!ready(item)){
+   out.push(pendingStream(s,h,{token,publicBase}));
+   converted++;
+   continue;
+  }
+  const f=selectFile(item,s);if(!f){out.push(pendingStream(s,h,{token,publicBase}));converted++;continue}
+  const id=Number(item.id);if(!Number.isInteger(id)||id<1){out.push(pendingStream(s,h,{token,publicBase}));converted++;continue}
   const t=ticket({t:id,f:f.id},token);
   out.push({name:`${s.name||'SKTorrent'} • Direct`,title:`▶ Priame prehranie cez TorBox\n${s.title||''}`.trim(),url:`${String(publicBase).replace(/\/$/,'')}/wako-direct/${t}`,behaviorHints:{...(s.behaviorHints||{}),...(f.name?{filename:f.name}:{})}});
   converted++;
  }
  return out;
+}
+async function resolvePending(token,payload,{fetchImpl=globalThis.fetch,attempts=6,delayMs=1000}={}){
+ const h=normHash(payload?.h);if(!h)return null;
+ const stream={...(payload?.i>=0?{fileIdx:payload.i}:{}),behaviorHints:{...(payload?.n?{filename:payload.n}:{})}};
+ for(let attempt=0;attempt<attempts;attempt++){
+  let item=null;try{item=await ensureItem(token,h,{fetchImpl})}catch{}
+  if(item&&ready(item)){
+   const id=Number(item.id),f=selectFile(item,stream);
+   if(Number.isInteger(id)&&id>0&&f)return {torrentId:id,fileId:f.id,filename:f.name||null};
+  }
+  if(attempt<attempts-1)await delay(delayMs);
+ }
+ return null;
 }
 async function requestDownloadUrl(token,torrentId,fileId,{fetchImpl=globalThis.fetch}={}){
  const q=new URLSearchParams({token,torrent_id:String(torrentId),file_id:String(fileId),redirect:'false',append_name:'true'});
@@ -109,4 +152,4 @@ async function requestDownloadUrl(token,torrentId,fileId,{fetchImpl=globalThis.f
  const u=String(j?.data||'');let parsed;try{parsed=new URL(u)}catch{return null}
  return parsed.protocol==='https:'?u:null;
 }
-module.exports={normHash,ready,selectFile,myList,createTorrent,ensureItem,ticket,verifyTicket,prepareStreams,requestDownloadUrl};
+module.exports={normHash,ready,selectFile,myList,createTorrent,ensureItem,ticket,verifyTicket,pendingTicket,verifyPendingTicket,pendingStream,prepareStreams,resolvePending,requestDownloadUrl};
