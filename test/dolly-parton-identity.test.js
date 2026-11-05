@@ -48,7 +48,7 @@ test('the exact SKTorrent Dolly release matches IMDb title despite Koncert / TV-
 });
 
 test('Cinemeta and TMDB receive the clean title before the raw release name',async()=>{
- const {env,target}=harness({cine:[{...target}]});
+ const {env}=harness({cine:[{id:'tt11229774',name:'Dolly Parton: 50 Years at the Opry',releaseInfo:'2019'}]});
  const queries=env.metadataQueries(SOURCE.name,'movie');
  assert.equal(queries[0],'Dolly Parton 50 Years at the Opry');
  assert.equal((await env.findConcertCinemeta(SOURCE)).id,'tt11229774');
