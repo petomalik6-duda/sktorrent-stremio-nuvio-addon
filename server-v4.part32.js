@@ -1,5 +1,5 @@
 
-// v2.2.16: make locally identified concerts resolvable across Stremio,
+// v2.2.15 hotfix: make locally identified concerts resolvable across Stremio,
 // AIOStreams' Jellyfin media server and other clients.
 // A local catalog item has id sktc:<torrentId>. Previously its defaultVideoId
 // could be rewritten to sktv:<torrentId>, and both local routes depended on
@@ -77,8 +77,3 @@ stream=async function(req,res,c) {
  finally{req.params.id=originalId}
 };
 
-const localConcertManifestBase=manifest;
-manifest=function(){
- const m=localConcertManifestBase();
- return {...m,version:'2.2.16'}
-};
