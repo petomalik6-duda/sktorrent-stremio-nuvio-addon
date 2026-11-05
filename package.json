@@ -1,6 +1,6 @@
 {
   "name": "sktorrent-catalog-addon",
-  "version": "2.2.16",
+  "version": "2.2.15",
   "description": "Stremio/Nuvio SKTorrent addon with authenticated category-aware catalog indexing, safe tt/tmdb identities, People filmography bridge support, localized metadata, progressive enrichment, request coalescing, optimized playback discovery, restored local concert fallback, last-known-good Wako movie contract, standard-route Wako session detection and server-side TorBox direct playback using real torrent-file upload, fresh state checks, retryable stuck-item repair and progressive requestdl probing while retaining visible infoHash fallback until ready",
   "main": "server-v4.part1.js",
   "scripts": {
