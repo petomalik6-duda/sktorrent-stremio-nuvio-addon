@@ -5,8 +5,6 @@ const axios=require('axios');
 const cheerio=require('cheerio');
 const bencode=require('bncode');
 const crypto=require('crypto');
-const http=require('http');
-const https=require('https');
 
 const PORT=Number(process.env.PORT||7000);
 const BASE='https://sktorrent.eu';
@@ -16,8 +14,7 @@ const META_TTL=6*60*60*1000;
 const PAGE_SIZE=40;
 const CAT={DABING:1,KRESLENE:5,SERIES:16,CONCERTS:26,UHD:43};
 const cache=new Map();
-const httpAgent=new http.Agent({keepAlive:true,maxSockets:40});
-const httpsAgent=new https.Agent({keepAlive:true,maxSockets:40});
+const { httpAgent, httpsAgent } = require('./lib/upstream-agents');
 
 const CATS=[
  ['movie','skt-novinky-dabing-filmy','🆕 SKT: Novinky CZ/SK dabing – filmy'],
