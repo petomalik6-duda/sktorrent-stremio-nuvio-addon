@@ -75,10 +75,11 @@ test('normal films and series metadata are unaffected',async()=>{
 });
 
 test('application startup no longer loads aggressive universal concert matching',()=>{
- const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
- for(const action of ['start','check']){
-  assert.ok(pkg.scripts[action].includes('server-v4.part34.js'));
-  assert.ok(pkg.scripts[action].includes('server-v4.part36.js'));
-  assert.ok(!pkg.scripts[action].includes('server-v4.part35.js'));
- }
+ const { RUNTIME_PARTS } = require('../scripts/runtime-parts');
+ assert.ok(RUNTIME_PARTS.includes('server-v4.part34.js'));
+ assert.ok(RUNTIME_PARTS.includes('server-v4.part36.js'));
+ assert.ok(!RUNTIME_PARTS.includes('server-v4.part35.js'));
+ const source=RUNTIME_PARTS.map(file=>fs.readFileSync(file,'utf8')).join('');
+ assert.ok(source.includes('originalConcertTitleResolveMeta'));
+ assert.ok(!source.includes('const CONCERT_IDENTITY_MIN_MARGIN='));
 });
